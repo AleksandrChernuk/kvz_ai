@@ -1,4 +1,12 @@
 {
-  "_comment": "MCP-сервери оркестратора. Ключі тут = knowledge_bases.mcp_server у БД. Приклад: \"docs-kb\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-...\"] }. Майбутні конектори: бази знань (NotebookLM-подібні), Google Drive, Bitrix24, web search, email.",
-  "mcpServers": {}
+  "_comment": "MCP-сервери оркестратора. Ключі тут = knowledge_bases.mcp_server у БД. У проді воркер ходить до конекторів через ContextForge (MCP_GATEWAY_URL); локально/для розробки можна спавнити stdio-сервер напряму, як kb-docs нижче. Майбутні конектори: Google Drive, Bitrix24, web search, email.",
+  "mcpServers": {
+    "kb-docs": {
+      "command": "node",
+      "args": ["connectors/kb-docs/dist/server.js"],
+      "env": {
+        "KB_DOCS_DIR": "connectors/kb-docs/data"
+      }
+    }
+  }
 }

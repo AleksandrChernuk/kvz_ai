@@ -1,0 +1,26 @@
+{
+  "name": "kvz-kb-docs-connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only knowledge-base MCP connector for kvz-ai (NotebookLM-style document store) behind ContextForge.",
+  "bin": {
+    "kb-docs": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  }
+}

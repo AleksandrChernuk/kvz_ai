@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Connectors are separate deployables with their own toolchain.
+    "connectors/**",
   ]),
 ]);
 
