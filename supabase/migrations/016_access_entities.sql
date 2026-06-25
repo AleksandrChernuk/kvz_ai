@@ -339,3 +339,31 @@ revoke execute on function update_knowledge_base_with_access(uuid, text, text, b
 grant execute on function can_manage_kb() to authenticated, service_role;
 grant execute on function create_knowledge_base_with_access(text, text, text, jsonb, user_role[]) to authenticated, service_role;
 grant execute on function update_knowledge_base_with_access(uuid, text, text, bool, bool, user_role[]) to authenticated, service_role;
+
+create or replace function ops_smoke_check()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_agents int;
+  v_role_agent_access int;
+  v_kb_access int;
+begin
+  select count(*) into v_agents from agents;
+  select count(*) into v_role_agent_access from role_agent_access;
+  select count(*) into v_kb_access from knowledge_base_role_access;
+
+  return jsonb_build_object(
+    'agents_count', v_agents,
+    'role_agent_access_count', v_role_agent_access,
+    'knowledge_base_role_access_count', v_kb_access,
+    'can_role_access_codex_viewer', can_role_access_agent('viewer', 'codex'),
+    'release_stale_locks_available', release_stale_locks(1000000) >= 0
+  );
+end;
+$$;
+
+revoke execute on function ops_smoke_check() from public, anon, authenticated;
+grant execute on function ops_smoke_check() to service_role;

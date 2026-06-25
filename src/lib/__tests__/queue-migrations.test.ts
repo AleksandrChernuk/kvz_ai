@@ -104,4 +104,10 @@ describe("access entities migration", () => {
     )
     expect(accessEntitiesSql).toContain("is not allowed for role")
   })
+
+  it("exposes a service-role-only ops smoke check", () => {
+    expect(accessEntitiesSql).toContain("create or replace function ops_smoke_check")
+    expect(accessEntitiesSql).toContain("grant execute on function ops_smoke_check() to service_role")
+    expect(accessEntitiesSql).toContain("release_stale_locks_available")
+  })
 })

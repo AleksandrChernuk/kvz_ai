@@ -145,6 +145,7 @@ else
 fi
 sudo systemctl --no-pager --full status kvz-ai-web | sed -n '1,18p'
 sudo systemctl --no-pager --full status kvz-ai-worker | sed -n '1,18p'
-sudo systemctl --no-pager --full status kvz-ai-watchdog.timer | sed -n '1,18p'"
+sudo systemctl --no-pager --full status kvz-ai-watchdog.timer | sed -n '1,18p'
+sudo APP_ROOT='$APP_ROOT' APP_USER='$APP_USER' '$APP_ROOT/current/ops/deploy/smoke-check.sh'"
 
 echo "Done. Release: $RELEASE_ID"

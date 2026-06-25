@@ -360,6 +360,12 @@ npm run build       # production build (перед деплоєм)
 
 Запускати після будь-яких змін коду.
 
+Після self-host deploy:
+
+```bash
+SERVER=root@SERVER ./ops/deploy/smoke-check.sh
+```
+
 ---
 
 ## Часті проблеми (FAQ)

@@ -134,7 +134,35 @@ SERVER=root@YOUR_SERVER DOMAIN=ai.example.com ./ops/deploy/deploy-release.sh
 The script uploads a new release, validates web and worker runtime env, runs
 `npm ci`, builds Next.js with the server env loaded, switches
 `/opt/kvz-ai/current`, installs systemd/Nginx config, and restarts
-`kvz-ai-web`, `kvz-ai-worker`, and `kvz-ai-watchdog.timer`.
+`kvz-ai-web`, `kvz-ai-worker`, and `kvz-ai-watchdog.timer`. It then runs
+`ops/deploy/smoke-check.sh` on the server.
+
+## Smoke Check
+
+Run after migrations/deploy, or any time the server feels suspicious:
+
+```bash
+SERVER=root@YOUR_SERVER ./ops/deploy/smoke-check.sh
+```
+
+On the VPS directly:
+
+```bash
+sudo /opt/kvz-ai/current/ops/deploy/smoke-check.sh
+```
+
+The smoke check verifies:
+
+- release layout and runtime env files;
+- required env variables are present;
+- `kvz-ai-web`, `kvz-ai-worker`, and `kvz-ai-watchdog.timer` are active;
+- worker-token endpoints respond:
+  - `/api/ops/smoke`
+  - `/api/tasks/claim`
+  - `/api/tasks/watchdog`
+  - `/api/agents?role=viewer`
+  - `/api/kb?role=viewer`
+- migration-backed access entities/functions are available via `ops_smoke_check()`.
 
 ## Rollback
 
