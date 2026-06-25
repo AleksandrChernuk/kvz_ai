@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
 import { createClient } from "@/lib/supabase/server"
 import type { Profile, Task } from "@/types/database"
 
@@ -38,7 +39,7 @@ export async function GET() {
 
   const { data, error } = await query.returns<Task[]>()
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 
   return NextResponse.json({ tasks: data ?? [] })
@@ -77,7 +78,7 @@ export async function PATCH(req: Request) {
       })
       .eq("id", id)
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return apiError(error)
     }
     return NextResponse.json({ ok: true })
   }
@@ -91,7 +92,7 @@ export async function PATCH(req: Request) {
       .eq("id", id)
       .in("status", ["pending", "running"])
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return apiError(error)
     }
     return NextResponse.json({ ok: true })
   }

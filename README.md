@@ -271,6 +271,7 @@ ops/                       — інфраструктура деплою (див
 | 009 | транзакційний complete |
 | 010 | атомарний chat enqueue |
 | 011 | **гейт підтвердження** (awaiting_approval, request/approve/reject) |
+| 012 | complete_task backstop (відмова без approval) + індекси read-шляхів |
 
 ### Конвенції
 

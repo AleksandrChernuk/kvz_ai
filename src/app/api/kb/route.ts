@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
 import { hasFeature } from "@/lib/features"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
       .order("name")
       .returns<KnowledgeBase[]>()
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return apiError(error)
     }
     return NextResponse.json({ knowledge_bases: data ?? [] })
   }
@@ -39,7 +40,7 @@ export async function GET(req: Request) {
     .returns<KnowledgeBase[]>()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 
   return NextResponse.json({ knowledge_bases: data ?? [] })
@@ -107,10 +108,7 @@ export async function POST(req: Request) {
     .single<KnowledgeBase>()
 
   if (error || !data) {
-    return NextResponse.json(
-      { error: error?.message ?? "Не вдалося створити базу знань" },
-      { status: 500 }
-    )
+    return apiError(error, 500, "Не вдалося створити базу знань")
   }
 
   return NextResponse.json({ knowledge_base: data })

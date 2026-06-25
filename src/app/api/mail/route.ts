@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { isMailType, MAIL_TYPES } from "@/lib/validate"
@@ -30,6 +31,11 @@ export async function GET(req: Request) {
   }
 
   const agent = new URL(req.url).searchParams.get("agent") ?? ""
+  // agent потрапляє у фільтр запиту — валідуємо charset, щоб виключити
+  // ін'єкцію в граматику PostgREST-фільтра (кома/дужки/оператори).
+  if (agent && !/^[a-z0-9_@-]{1,64}$/i.test(agent)) {
+    return NextResponse.json({ error: "Невалідний agent" }, { status: 400 })
+  }
 
   const supabase = createAdminClient()
   let query = supabase
@@ -40,13 +46,14 @@ export async function GET(req: Request) {
     .order("created_at", { ascending: true })
 
   if (agent) {
-    query = query.or(`to_agent.eq.${agent},to_agent.eq.@all`)
+    // .in() параметризує значення — не можна вийти в граматику операторів
+    query = query.in("to_agent", [agent, "@all"])
   }
 
   const { data, error } = await query.returns<AgentMail[]>()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 
   return NextResponse.json({ mail: data ?? [] })
@@ -96,7 +103,7 @@ export async function POST(req: Request) {
   })
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 
   return NextResponse.json({ id: data })
@@ -121,7 +128,7 @@ export async function PATCH(req: Request) {
   })
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 
   return NextResponse.json({ marked: typeof data === "number" ? data : 0 })
