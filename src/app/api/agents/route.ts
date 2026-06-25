@@ -2,23 +2,12 @@ import { NextResponse } from "next/server"
 
 import { apiError } from "@/lib/api-error"
 import { isManagedAgent } from "@/lib/access"
+import { getProfileRole } from "@/lib/get-profile-role"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { isUserRole } from "@/lib/validate"
 import { verifyWorker } from "@/lib/worker-auth"
-import type { AgentCatalogItem, Profile, RoleAgentAccess } from "@/types/database"
-
-async function getProfileRole(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string
-) {
-  const { data } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("user_id", userId)
-    .single<Pick<Profile, "role">>()
-  return data?.role ?? null
-}
+import type { AgentCatalogItem, RoleAgentAccess } from "@/types/database"
 
 // GET /api/agents — агенти, доступні поточній ролі. Worker бачить усі enabled.
 export async function GET(req: Request) {

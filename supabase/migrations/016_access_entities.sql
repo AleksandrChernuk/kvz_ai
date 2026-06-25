@@ -141,6 +141,14 @@ $$;
 revoke execute on function can_role_access_agent(user_role, agent_type) from public, anon;
 grant execute on function can_role_access_agent(user_role, agent_type) to authenticated, service_role;
 
+-- ЦЕ ЄДИНЕ ЖИВЕ визначення complete_task (перевизначає 012 та 014).
+-- При будь-якій правці зберегти ВСІ інваріанти, інакше — регресія:
+--   1. lock-ownership: locked_by = p_worker_id
+--   2. running-guard: status = 'running' (+ if not found raise)
+--   3. approval-gate: approval_required ⇒ approved_at not null
+--   4. approval-binding: approved ⇒ result = approved result
+--   5. agent-access: agent not null AND can_role_access_agent(role, agent)
+--   6. empty-answer: result.answer не порожній
 create or replace function complete_task(
   p_task_id uuid,
   p_worker_id text,
@@ -379,7 +387,8 @@ begin
     'role_agent_access_count', v_role_agent_access,
     'knowledge_base_role_access_count', v_kb_access,
     'can_role_access_codex_viewer', can_role_access_agent('viewer', 'codex'),
-    'release_stale_locks_available', release_stale_locks(1000000) >= 0
+    -- Перевірка наявності, а не виклик: health-probe не повинен мутувати чергу.
+    'release_stale_locks_available', to_regprocedure('release_stale_locks(int)') is not null
   );
 end;
 $$;

@@ -1,20 +1,9 @@
 import { NextResponse } from "next/server"
 
 import { apiError } from "@/lib/api-error"
+import { getProfileRole } from "@/lib/get-profile-role"
 import { createClient } from "@/lib/supabase/server"
 import type { Profile, Task } from "@/types/database"
-
-async function getProfileRole(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string
-) {
-  const { data } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("user_id", userId)
-    .single<Pick<Profile, "role">>()
-  return data?.role ?? null
-}
 
 // GET — задачі поточного юзера (або всі для admin)
 export async function GET() {
