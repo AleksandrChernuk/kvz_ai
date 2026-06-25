@@ -10,7 +10,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Multi-agent AI assistant platform. Next.js 16 + React 19 frontend, Supabase backend, asynchronous task queue for agent execution.
 
-**Product vision:** users log in and write tasks in chat ("порахуй", "підкажи", …). Answers come primarily from the company's knowledge bases (NotebookLM-style and others) connected as MCP servers — there will be many of them. Features (training, KB management, …) are gated per role via `role_features`.
+**Product vision:** users log in and write tasks in chat ("порахуй", "підкажи", …). Answers come primarily from the company's knowledge bases (NotebookLM-style and others) connected as MCP servers — there will be many of them. UI features are gated via `role_features`; agents and MCP/KB services are gated via normalized role access tables.
 
 ## Stack
 
@@ -83,7 +83,12 @@ src/
     roles.ts               — UserRole, ROLE_LABELS, ROLE_COLORS
 agent/                     — Orchestrator Claude Code agent (see agent/CLAUDE.md)
 codex-agent/               — Codex subagent (see codex-agent/CLAUDE.md)
+.codex/skills/             — project-local skills for Codex/Claude workflows
 ```
+
+## Project Skills
+
+- `mcp-connector-builder` (`.codex/skills/mcp-connector-builder`) — use for MCP/ContextForge connector work: connector structure, 1Password-sourced runtime config, read-only defaults, schemas, audit logs, rate limits, SSRF/egress controls, tests, Docker/runtime layout, and registration via ContextForge.
 
 ## Data model (Supabase)
 
@@ -94,8 +99,11 @@ codex-agent/               — Codex subagent (see codex-agent/CLAUDE.md)
 - **runs** — logical session batch; `status: active|completed|failed`, `agent_count`
 - **agent_sessions** — orchestrator/subagent state; `state: booting|working|between_turns|stalled|completed|zombie`, `escalation_level`, `checkpoint`, `last_activity`
 - **agent_mail** — typed inter-agent messages; `type`, `priority`, `read_at`
-- **knowledge_bases** — MCP connectors; `mcp_server` (key in `agent/.mcp.json`), `allowed_roles: user_role[]`, `enabled`
-- **role_features** — feature flags per role (`training`, `kb_manage`, …)
+- **agents** — agent catalog; `key: AgentType`, `name`, `description`, `enabled`
+- **role_agent_access** — role-to-agent access matrix
+- **knowledge_bases** — MCP connectors; `mcp_server` (key in `agent/.mcp.json`), `enabled`
+- **knowledge_base_role_access** — role-to-KB/service access matrix
+- **role_features** — UI feature flags per role (`training`, `kb_manage`, …)
 
 ### PostgreSQL functions (service role only)
 

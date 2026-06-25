@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
+import { isManagedAgent } from "@/lib/access"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { verifyWorker } from "@/lib/worker-auth"
 import { fireWebhook } from "@/lib/webhook"
@@ -18,13 +20,18 @@ export async function POST(req: Request) {
   const task_id = typeof body?.task_id === "string" ? body.task_id : ""
   const worker_id = typeof body?.worker_id === "string" ? body.worker_id : ""
   const result: TaskResult | null = body?.result ?? null
-  const agent: AgentType | null = body?.agent ?? null
+  const agent: AgentType | null =
+    body?.agent === undefined || body?.agent === null ? null : body.agent
 
   if (!task_id || !worker_id || !result?.answer) {
     return NextResponse.json(
       { error: "task_id, worker_id, result.answer обовʼязкові" },
       { status: 400 }
     )
+  }
+
+  if (agent !== null && !isManagedAgent(agent)) {
+    return NextResponse.json({ error: "agent невалідний" }, { status: 400 })
   }
 
   const supabase = createAdminClient()
@@ -37,7 +44,14 @@ export async function POST(req: Request) {
   })
 
   if (completeErr) {
-    return NextResponse.json({ error: completeErr.message }, { status: 500 })
+    const accessDenied = completeErr.message.includes("is not allowed for role")
+    return apiError(
+      completeErr,
+      accessDenied ? 403 : 500,
+      accessDenied
+        ? "Агент недоступний для ролі користувача"
+        : "Не вдалося завершити задачу"
+    )
   }
 
   // Webhook — поза транзакцією, його провал не впливає на результат

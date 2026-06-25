@@ -19,8 +19,9 @@ Connectors reach live corporate systems, so access is locked at three layers:
 | Token | `CF_AUTH_TOKEN` on the gateway | any caller without the worker token |
 | Role | worker checks `knowledge_bases.allowed_roles` vs `profiles.role` before calling | a user reaching a KB not allowed for their role |
 
-Connector credentials (Bitrix webhook, 1C OData user) live **inside the
-gateway/connector containers** — the worker and the Next.js app never see them.
+Connector credentials (Bitrix webhook, 1C OData user) are sourced from
+**1Password** and materialized only into gateway/connector runtime env. The
+worker and the Next.js app never see them.
 
 ## Layout on the VPS
 
@@ -36,7 +37,7 @@ gateway/connector containers** — the worker and the Next.js app never see them
 ## Setup
 
 ```bash
-cp .env.example .env        # then fill CF_AUTH_TOKEN, CF_JWT_SECRET, CF_DB_PASSWORD
+cp .env.example .env        # materialize CF_* runtime values from 1Password
 docker compose --env-file .env up -d
 ```
 
@@ -45,7 +46,7 @@ is no public route to the MCP layer by design.
 
 ## Wiring the worker
 
-Add to `/opt/kvz-ai/shared/env/worker.env`:
+Materialize these worker runtime values from 1Password:
 
 ```text
 MCP_GATEWAY_URL=http://127.0.0.1:4444

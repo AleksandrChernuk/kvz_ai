@@ -1,0 +1,13 @@
+[Unit]
+Description=KVZ AI task watchdog
+After=network.target kvz-ai-web.service
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_ROOT__/current
+EnvironmentFile=__APP_ROOT__/shared/env/worker.env
+ExecStart=/usr/bin/env bash -lc 'curl -fsS -X POST "$API_URL/api/tasks/watchdog" -H "Authorization: Bearer $WORKER_TOKEN" -H "Content-Type: application/json" --max-time 30 -d "{\"timeout_minutes\":5}"'
+StandardOutput=append:__APP_ROOT__/shared/logs/watchdog/watchdog.log
+StandardError=append:__APP_ROOT__/shared/logs/watchdog/watchdog.err.log

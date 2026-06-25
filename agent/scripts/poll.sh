@@ -47,9 +47,22 @@ api() {
     -d "$2"
 }
 
+api_get() {
+  curl -sf "$API_URL$1" \
+    -H "Authorization: Bearer $WORKER_TOKEN" \
+    --max-time 30
+}
+
 fail_task() { # $1=task_id $2=error $3=retry(true|false)
   api /api/tasks/fail "$(jq -n --arg id "$1" --arg w "$WORKER_ID" --arg e "$2" --argjson r "$3" \
     '{task_id: $id, worker_id: $w, error: $e, retry: $r}')" >/dev/null || true
+}
+
+complete_task() { # $1=task_id $2=result(json)
+  local agent
+  agent=$(echo "$2" | jq -r '.agent_used // "codex"')
+  api /api/tasks/complete "$(jq -n --arg id "$1" --arg w "$WORKER_ID" --arg a "$agent" --argjson r "$2" \
+    '{task_id: $id, worker_id: $w, result: $r, agent: $a}')" >/dev/null
 }
 
 checkpoint() { # $1=task_id $2=progress $3=pending
@@ -64,7 +77,8 @@ request_approval() { # $1=task_id $2=result(json)
 }
 
 process_one() {
-  local claim task task_id payload trimmed gate_rc result approved_at
+  local claim task task_id payload trimmed gate_rc result approved_at approved_result
+  local user_role agents_payload kbs_payload agents_rc kbs_rc allowed_agents allowed_kbs
 
   claim=$(api /api/tasks/claim "$(jq -n --arg w "$WORKER_ID" '{worker_id: $w}')") || {
     log "claim недоступний (API/мережа)"; return 1
@@ -77,7 +91,30 @@ process_one() {
   task_id=$(echo "$task" | jq -r '.id')
   payload=$(echo "$task" | jq '.payload')
   approved_at=$(echo "$task" | jq -r '.approved_at // empty')
+  approved_result=$(echo "$task" | jq -c '.result // empty')
   log "задача $task_id"
+
+  if [ -n "$approved_at" ]; then
+    if [ -z "$approved_result" ] || [ "$approved_result" = "null" ]; then
+      log "задача $task_id: підтверджена, але approved result відсутній"
+      fail_task "$task_id" "Підтверджений результат відсутній" false
+      return 0
+    fi
+
+    if ! echo "$approved_result" | jq -e '.answer | strings | length > 0' >/dev/null; then
+      log "задача $task_id: підтверджений результат некоректний"
+      fail_task "$task_id" "Підтверджений результат некоректний" false
+      return 0
+    fi
+
+    if complete_task "$task_id" "$approved_result"; then
+      log "задача $task_id: готово після підтвердження"
+    else
+      log "задача $task_id: complete підтвердженого результату не пройшов"
+      fail_task "$task_id" "Не вдалося завершити підтверджений результат" false
+    fi
+    return 0
+  fi
 
   # Token gate: обрізаємо контекст до ліміту; якщо саме повідомлення
   # завелике — остаточний fail без retry.
@@ -94,6 +131,28 @@ process_one() {
     fail_task "$task_id" "Некоректний payload задачі" false
     return 0
   fi
+
+  user_role=$(echo "$trimmed" | jq -r '.user_role // "viewer"')
+
+  set +e
+  agents_payload=$(api_get "/api/agents?role=$user_role")
+  agents_rc=$?
+  kbs_payload=$(api_get "/api/kb?role=$user_role")
+  kbs_rc=$?
+  set -e
+
+  if [ "$agents_rc" -ne 0 ] || [ "$kbs_rc" -ne 0 ]; then
+    log "задача $task_id: не вдалося отримати матрицю доступів для ролі $user_role"
+    fail_task "$task_id" "Не вдалося отримати доступні агенти/сервіси" true
+    return 0
+  fi
+
+  allowed_agents=$(echo "$agents_payload" | jq -c '[.agents[] | {key, name, description}]')
+  allowed_kbs=$(echo "$kbs_payload" | jq -c '[.knowledge_bases[] | {name, description, mcp_server}]')
+  trimmed=$(echo "$trimmed" | jq -c \
+    --argjson agents "$allowed_agents" \
+    --argjson kbs "$allowed_kbs" \
+    '. + {available_agents: $agents, available_knowledge_bases: $kbs}')
 
   checkpoint "$task_id" "Задачу захоплено, token gate пройдено" "Виклик LLM-обробника"
 
@@ -142,11 +201,9 @@ process_one() {
     return 0
   fi
 
-  local agent
-  agent=$(echo "$result" | jq -r '.agent_used // "codex"')
-  api /api/tasks/complete "$(jq -n --arg id "$task_id" --arg w "$WORKER_ID" --arg a "$agent" --argjson r "$result" \
-    '{task_id: $id, worker_id: $w, result: $r, agent: $a}')" >/dev/null || {
+  complete_task "$task_id" "$result" || {
     log "задача $task_id: complete не пройшов"
+    fail_task "$task_id" "Не вдалося завершити задачу: агент недоступний або complete відхилено" false
     return 0
   }
   log "задача $task_id: готово"

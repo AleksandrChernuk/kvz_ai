@@ -1,0 +1,4 @@
+interface:
+  display_name: "MCP Connector Builder"
+  short_description: "Build secure kvz-ai MCP connectors."
+  default_prompt: "Build or review an MCP connector for kvz-ai using ContextForge, 1Password-sourced runtime config, read-only defaults, strict schemas, audit logging, rate limits, and egress controls."

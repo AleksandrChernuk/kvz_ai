@@ -1,0 +1,11 @@
+[Unit]
+Description=Run KVZ AI task watchdog every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=kvz-ai-watchdog.service
+
+[Install]
+WantedBy=timers.target

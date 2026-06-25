@@ -49,3 +49,6 @@ next-env.d.ts
 
 # local code-review session artifacts
 /.full-review/
+
+# locally installed reference/tool workspaces
+/.codex/tools/

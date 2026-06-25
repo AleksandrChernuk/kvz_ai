@@ -13,9 +13,13 @@ MODEL="${CLAUDE_MODEL:-claude-opus-4-8}"
 PAYLOAD=$(cat)
 
 USER_ROLE=$(echo "$PAYLOAD" | jq -r '.user_role // "viewer"')
+AVAILABLE_AGENTS=$(echo "$PAYLOAD" | jq -c '.available_agents // []')
+AVAILABLE_KBS=$(echo "$PAYLOAD" | jq -c '.available_knowledge_bases // []')
 
 SYSTEM="Ти — асистент внутрішньої системи КВЗ. Відповідай українською, стисло і по суті. \
 Роль користувача: $USER_ROLE. \
+Доступні для цієї ролі агенти: $AVAILABLE_AGENTS. \
+Доступні для цієї ролі бази знань/MCP-сервіси: $AVAILABLE_KBS. \
 Для ролі viewer — тільки довідкові відповіді, жодних інструкцій зі зміни даних чи виконання коду. \
 Якщо для точної відповіді бракує даних (немає доступу до баз знань) — чесно скажи про це."
 

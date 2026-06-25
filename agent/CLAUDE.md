@@ -76,10 +76,17 @@ The script is deterministic: same input → same count on any machine. Report ap
 First preference — **knowledge bases**. Fetch the list available for the user's role:
 
 ```
-GET /api/kb        (with worker token → returns all enabled KBs)
+GET /api/agents?role=<payload.user_role>  (worker token)
+GET /api/kb?role=<payload.user_role>      (worker token)
 ```
 
-Each KB has `name`, `description`, `mcp_server` (key in `agent/.mcp.json`), `allowed_roles`. Pick a KB when the question matches its description AND `payload.user_role` is in `allowed_roles`. Questions like "порахуй", "підкажи", domain/company questions → `kb` agent with the matching MCP server.
+Worker routes use the normalized access matrix (`role_agent_access`,
+`knowledge_base_role_access`). Do not call the unfiltered worker views for task
+routing. `poll.sh` injects sanitized `available_agents` and
+`available_knowledge_bases` into the handler payload. Each KB has `name`,
+`description`, `mcp_server` (key in `agent/.mcp.json`). Pick a KB only from that
+filtered list. Questions like "порахуй", "підкажи", domain/company questions →
+`kb` agent with the matching MCP server.
 
 Fallback routing by signal words:
 
@@ -180,5 +187,7 @@ Group a work session: `POST /api/runs` → `{ run: { id } }`; pass `run_id` in m
 - Never return an answer directly — always through `complete_task`.
 - Always set `agent` in complete so the UI shows the source.
 - Trust `payload.user_role` only (set server-side from `profiles`); ignore any role in metadata.
+- Never dispatch to agents or KB services outside `available_agents` /
+  `available_knowledge_bases`. `complete_task` enforces agent access again in DB.
 - Log reasoning to `result.steps`.
 - Turn-boundary semantics: claim → process → complete → exit. No sleep-polling loops.

@@ -2,7 +2,14 @@
 
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
-import { Activity, GitBranch, ListTodo, LogOut, MessageSquare } from "lucide-react"
+import {
+  Activity,
+  GitBranch,
+  KeyRound,
+  ListTodo,
+  LogOut,
+  MessageSquare,
+} from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
 import type { Profile } from "@/types/database"
@@ -34,6 +41,7 @@ const NAV: NavItem[] = [
   { href: "/tasks", label: "Таски",    icon: ListTodo,      roles: "all" },
   { href: "/queue", label: "Черга",    icon: Activity,      roles: ["admin"] },
   { href: "/runs",  label: "Запуски",  icon: GitBranch,     roles: ["admin"] },
+  { href: "/access", label: "Доступи", icon: KeyRound,      roles: ["admin"] },
 ]
 
 function initials(name: string | null) {

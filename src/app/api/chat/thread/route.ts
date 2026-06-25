@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
 import { createClient } from "@/lib/supabase/server"
 
 // Створити новий тред для поточного юзера.
@@ -43,14 +44,15 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "id обовʼязковий" }, { status: 400 })
   }
 
-  const { error } = await supabase
-    .from("threads")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id)
+  const { error } = await supabase.rpc("delete_thread_safely", {
+    p_thread_id: id,
+  })
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error.message.includes("has active tasks")
+      ? "Неможливо видалити чат з активними задачами"
+      : "Не вдалося видалити чат"
+    return apiError(error, 409, message)
   }
 
   return NextResponse.json({ ok: true })

@@ -55,6 +55,11 @@ export interface TaskPayload {
   user_message: string
   user_role: UserRole
   thread_context?: Message[]
+  available_agents?: Pick<AgentCatalogItem, "key" | "name" | "description">[]
+  available_knowledge_bases?: Pick<
+    KnowledgeBase,
+    "name" | "description" | "mcp_server"
+  >[]
   metadata?: Record<string, unknown>
 }
 
@@ -63,6 +68,11 @@ export interface TaskResult {
   agent_used: AgentType
   steps?: string[]
   tokens?: { input: number; output: number }
+  requires_approval?: boolean
+  validation?: {
+    kind: "weight" | "selection" | "ilogic" | "dxf" | "json"
+    [key: string]: unknown
+  }
   raw_result?: unknown
 }
 
@@ -152,6 +162,27 @@ export interface KnowledgeBase {
   created_at: string
 }
 
+export interface AgentCatalogItem {
+  key: AgentType
+  name: string
+  description: string | null
+  enabled: boolean
+  created_at: string
+}
+
+export interface RoleAgentAccess {
+  role: UserRole
+  agent: AgentType
+  enabled: boolean
+  created_at: string
+}
+
+export interface KnowledgeBaseRoleAccess {
+  knowledge_base_id: string
+  role: UserRole
+  created_at: string
+}
+
 // Рольова фіча: який функціонал доступний якій ролі
 export interface RoleFeature {
   role: UserRole
@@ -169,7 +200,10 @@ export type Database = {
       runs: { Row: Run }
       agent_sessions: { Row: AgentSession }
       agent_mail: { Row: AgentMail }
+      agents: { Row: AgentCatalogItem }
+      role_agent_access: { Row: RoleAgentAccess }
       knowledge_bases: { Row: KnowledgeBase }
+      knowledge_base_role_access: { Row: KnowledgeBaseRoleAccess }
       role_features: { Row: RoleFeature }
     }
   }
