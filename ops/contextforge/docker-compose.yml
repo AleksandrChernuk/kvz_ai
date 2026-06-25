@@ -1,0 +1,84 @@
+# ContextForge MCP Gateway — single controlled entrypoint between the worker
+# and all MCP connectors (NotebookLM, Bitrix24, 1C, ...).
+#
+# Security model:
+#   - gateway listens ONLY on 127.0.0.1 (no public port; Nginx never proxies it)
+#   - connectors live on an internal network with no `ports:` of their own
+#   - the worker reaches connectors exclusively through the gateway, with a token
+#   - real connector credentials (1C/Bitrix) live in the gateway, not in the worker
+#
+# Bring up:  docker compose --env-file .env up -d
+
+name: kvz-mcp-gateway
+
+services:
+  gateway:
+    image: ghcr.io/ibm/mcp-context-forge:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${CF_DB_USER}:${CF_DB_PASSWORD}@db:5432/${CF_DB_NAME}
+      REDIS_URL: redis://cache:6379/0
+      HOST: 0.0.0.0
+      PORT: 4444
+    # Bound to loopback only — the worker connects via 127.0.0.1, nothing public.
+    ports:
+      - "127.0.0.1:4444:4444"
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    networks:
+      - gateway-net   # talks to db/cache and to the worker (via host loopback)
+      - connectors    # talks to the MCP connectors
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${CF_DB_USER}
+      POSTGRES_PASSWORD: ${CF_DB_PASSWORD}
+      POSTGRES_DB: ${CF_DB_NAME}
+    volumes:
+      - cf_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CF_DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - gateway-net
+
+  cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - gateway-net
+
+  # ── MCP connectors ────────────────────────────────────────────────────────
+  # Register each connector here. They have NO `ports:` — unreachable from
+  # outside and from the app; only the gateway (same `connectors` net) sees them.
+  # Example skeletons, disabled until real connectors exist:
+  #
+  # bitrix:
+  #   image: kvz/bitrix-mcp:latest
+  #   restart: unless-stopped
+  #   env_file: ./connectors/bitrix.env   # Bitrix24 webhook/REST creds live here
+  #   networks: [connectors]
+  #
+  # onec:
+  #   image: kvz/onec-mcp:latest
+  #   restart: unless-stopped
+  #   env_file: ./connectors/onec.env     # 1C OData user (read-only) lives here
+  #   networks: [connectors]
+
+volumes:
+  cf_db:
+
+networks:
+  gateway-net:
+    driver: bridge
+  connectors:
+    driver: bridge
+    internal: true   # no egress/ingress to the host — connectors are sealed in

@@ -1,0 +1,4 @@
+{
+  "_comment": "MCP-сервери оркестратора. Ключі тут = knowledge_bases.mcp_server у БД. Приклад: \"docs-kb\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-...\"] }. Майбутні конектори: бази знань (NotebookLM-подібні), Google Drive, Bitrix24, web search, email.",
+  "mcpServers": {}
+}

@@ -1,0 +1,138 @@
+# KVZ AI Server Ops
+
+This folder describes the VPS layout for the MVP deployment. The app code stays
+in the project root; runtime files, secrets, logs, and service configs are kept
+separate on the server.
+
+## Target Layout
+
+```text
+/opt/kvz-ai/
+├── current -> /opt/kvz-ai/releases/<release-id>
+├── releases/
+│   └── <release-id>/
+│       ├── src/
+│       ├── public/
+│       ├── supabase/
+│       ├── agent/
+│       ├── codex-agent/
+│       ├── package.json
+│       ├── package-lock.json
+│       └── .next/
+└── shared/
+    ├── env/
+    │   ├── web.env
+    │   └── worker.env
+    ├── logs/
+    │   ├── web/
+    │   └── worker/
+    └── run/
+
+/opt/supabase/
+└── kvz-ai/
+    ├── docker-compose.yml
+    ├── .env
+    ├── run.sh
+    └── volumes/
+
+/opt/kvz-mcp-gateway/
+├── docker-compose.yml
+├── .env
+└── connectors/
+```
+
+## Services
+
+- `kvz-ai-web`: Next.js app, listens on `127.0.0.1:3000`.
+- `kvz-ai-worker`: future Claude Code polling worker. Keep disabled until
+  `agent/scripts/poll.sh` is implemented for real task processing.
+- `supabase/kvz-ai`: self-hosted Supabase via Docker Compose, API gateway on
+  `127.0.0.1:8000` or `:8000` depending on Supabase compose defaults.
+- `kvz-mcp-gateway`: ContextForge MCP gateway on `127.0.0.1:4444`. The only path
+  from the worker to MCP connectors (NotebookLM, Bitrix24, 1C). Never proxied by
+  Nginx — no public route by design. See `ops/contextforge/README.md`.
+- Nginx: public reverse proxy from `80/443` to the Next.js and Supabase ports
+  only. It must NOT expose Supabase Studio or the MCP gateway.
+
+## Clean Existing KVZ/Supabase Files
+
+This cleanup is scoped to `/opt/kvz-ai` and `/opt/supabase/kvz-ai`.
+
+Archive current files:
+
+```bash
+sudo MODE=archive ./ops/server/clean-kvz-ai.sh
+```
+
+Delete current files and Docker volumes:
+
+```bash
+sudo MODE=wipe CONFIRM_WIPE=YES ./ops/server/clean-kvz-ai.sh
+```
+
+Use `archive` unless you are certain the current server data can be destroyed.
+
+## Self-Host Supabase
+
+Run on the VPS:
+
+```bash
+sudo SUPABASE_DOMAIN=supabase.example.com SITE_DOMAIN=ai.example.com \
+  ./ops/supabase/setup-self-hosted.sh
+```
+
+The script uses the official Supabase Linux setup script, writes the public
+Supabase URL and site URL into `/opt/supabase/kvz-ai/.env`, starts Docker
+Compose, and prints the generated keys.
+
+## First Server Setup
+
+1. Create the env files on the VPS:
+
+   ```bash
+   sudo mkdir -p /opt/kvz-ai/shared/env
+   sudo install -m 600 /dev/null /opt/kvz-ai/shared/env/web.env
+   sudo install -m 600 /dev/null /opt/kvz-ai/shared/env/worker.env
+   ```
+
+2. Fill `/opt/kvz-ai/shared/env/web.env` using the generated self-hosted
+   Supabase values:
+
+   ```text
+   NEXT_PUBLIC_SUPABASE_URL=https://supabase.example.com
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<SUPABASE_PUBLISHABLE_KEY>
+   SUPABASE_SERVICE_ROLE_KEY=<SUPABASE_SECRET_KEY>
+   ```
+
+3. Deploy the Next.js app.
+4. Run Supabase SQL migrations from `supabase/migrations/`:
+
+   ```bash
+   sudo ./ops/supabase/apply-migrations.sh
+   ```
+
+5. Create the first user in Supabase Studio, then set their role to `admin`.
+6. Install SSL with Certbot or the server panel after Nginx is active.
+
+## Deploy
+
+From the local project:
+
+```bash
+SERVER=root@YOUR_SERVER DOMAIN=ai.example.com ./ops/deploy/deploy-release.sh
+```
+
+The script uploads a new release, runs `npm ci`, builds Next.js with the server
+env loaded, switches `/opt/kvz-ai/current`, installs systemd/Nginx config, and
+restarts `kvz-ai-web`.
+
+## Rollback
+
+On the VPS:
+
+```bash
+sudo ln -sfn /opt/kvz-ai/releases/<previous-release-id> /opt/kvz-ai/current
+sudo systemctl restart kvz-ai-web
+```
+
+Keep the newest two or three releases and delete old ones when disk space matters.

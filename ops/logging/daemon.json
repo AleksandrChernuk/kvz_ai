@@ -1,0 +1,8 @@
+{
+  "_comment": "Docker daemon log limits so Supabase/ContextForge container logs cannot fill the disk. Install: sudo cp ops/logging/daemon.json /etc/docker/daemon.json && sudo systemctl restart docker. Existing containers must be recreated (compose up -d) to pick up the new defaults.",
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "20m",
+    "max-file": "5"
+  }
+}

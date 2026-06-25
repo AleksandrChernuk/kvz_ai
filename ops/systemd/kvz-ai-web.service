@@ -1,0 +1,20 @@
+[Unit]
+Description=KVZ AI Next.js web
+After=network.target
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_ROOT__/current
+EnvironmentFile=__APP_ROOT__/shared/env/web.env
+Environment=NODE_ENV=__NODE_ENV__
+Environment=PORT=__PORT__
+ExecStart=/usr/bin/env npm run start -- --hostname 127.0.0.1 --port __PORT__
+Restart=always
+RestartSec=5
+StandardOutput=append:__APP_ROOT__/shared/logs/web/web.log
+StandardError=append:__APP_ROOT__/shared/logs/web/web.err.log
+
+[Install]
+WantedBy=multi-user.target

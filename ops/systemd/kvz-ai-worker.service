@@ -1,0 +1,18 @@
+[Unit]
+Description=KVZ AI Claude Code worker
+After=network.target
+
+[Service]
+Type=simple
+User=kvzai
+Group=kvzai
+WorkingDirectory=/opt/kvz-ai/current
+EnvironmentFile=/opt/kvz-ai/shared/env/worker.env
+ExecStart=/bin/bash /opt/kvz-ai/current/agent/scripts/poll.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/kvz-ai/shared/logs/worker/worker.log
+StandardError=append:/opt/kvz-ai/shared/logs/worker/worker.err.log
+
+[Install]
+WantedBy=multi-user.target
