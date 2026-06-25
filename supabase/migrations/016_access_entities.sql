@@ -184,6 +184,11 @@ begin
     end if;
   end if;
 
+  -- Порожня відповідь не йде людині (інакше у чаті порожній assistant-пузир).
+  if coalesce(p_result->>'answer', '') = '' then
+    raise exception 'result.answer is empty for task %', p_task_id;
+  end if;
+
   update tasks set
     status     = 'done',
     result     = p_result,
@@ -193,10 +198,18 @@ begin
     checkpoint = null,
     error      = null,
     updated_at = now()
-  where id = p_task_id;
+  where id = p_task_id
+    and locked_by = p_worker_id
+    and status = 'running';
+
+  -- Guard: лише running-задача під цим воркером завершується (запобігає
+  -- повторному complete і вставці другого assistant-повідомлення).
+  if not found then
+    raise exception 'Task % not owned by worker % or not in running state', p_task_id, p_worker_id;
+  end if;
 
   insert into messages (thread_id, role, content, task_id)
-  values (v_task.thread_id, 'assistant', coalesce(p_result->>'answer', ''), p_task_id);
+  values (v_task.thread_id, 'assistant', p_result->>'answer', p_task_id);
 
   update threads set updated_at = now() where id = v_task.thread_id;
 end;
