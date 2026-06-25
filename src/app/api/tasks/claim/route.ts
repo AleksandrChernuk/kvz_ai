@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
+
 import { createAdminClient } from "@/lib/supabase/admin"
 import { verifyWorker } from "@/lib/worker-auth"
 import type { Task } from "@/types/database"
@@ -23,7 +25,7 @@ export async function POST(req: Request) {
   })
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 
   const rows = Array.isArray(data) ? (data as Task[]) : []

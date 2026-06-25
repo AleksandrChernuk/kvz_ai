@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
+
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import {
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
   })
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 
   return NextResponse.json({ released: typeof data === "number" ? data : 0 })

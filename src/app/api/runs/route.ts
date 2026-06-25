@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
+
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { verifyWorker } from "@/lib/worker-auth"
@@ -34,7 +36,7 @@ export async function GET() {
     .returns<Run[]>()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiError(error)
   }
 
   return NextResponse.json({ runs: data ?? [] })
@@ -56,10 +58,7 @@ export async function POST(req: Request) {
     .single<Run>()
 
   if (error || !data) {
-    return NextResponse.json(
-      { error: error?.message ?? "Не вдалося створити run" },
-      { status: 500 }
-    )
+    return apiError(error, 500, "Не вдалося створити run")
   }
 
   return NextResponse.json({ run: data })

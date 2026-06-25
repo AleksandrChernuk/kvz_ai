@@ -73,8 +73,9 @@ export function ChatWindow({ initialMessages, threadId, userRole }: Props) {
   }, [messages])
 
   function addOptimistic(content: string) {
+    const id = `optimistic-${Date.now()}`
     const optimistic: Message = {
-      id: `optimistic-${Date.now()}`,
+      id,
       thread_id: threadId,
       role: "user",
       content,
@@ -82,6 +83,11 @@ export function ChatWindow({ initialMessages, threadId, userRole }: Props) {
       created_at: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, optimistic])
+    return id
+  }
+
+  function removeOptimistic(id: string) {
+    setMessages((prev) => prev.filter((m) => m.id !== id))
   }
 
   return (
@@ -104,6 +110,7 @@ export function ChatWindow({ initialMessages, threadId, userRole }: Props) {
           threadId={threadId}
           userRole={userRole}
           onSend={addOptimistic}
+          onSendFailed={removeOptimistic}
         />
       </div>
     </div>

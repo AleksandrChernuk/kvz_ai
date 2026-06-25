@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
+
 import { createClient } from "@/lib/supabase/server"
 
 // Людина відхиляє задачу, що очікує дозволу. reject_task() завершує її як
@@ -31,7 +33,7 @@ export async function POST(
     p_reason: reason,
   })
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
+    return apiError(error, 400, "Не вдалося відхилити задачу")
   }
 
   return NextResponse.json({ ok: true })

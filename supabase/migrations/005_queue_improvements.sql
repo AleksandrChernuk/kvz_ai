@@ -245,6 +245,12 @@ begin
   where id = p_task_id
     and locked_by = p_worker_id
     and status = 'running';
+
+  -- Без перевірки save_checkpoint повертав би успіх навіть якщо лок втрачено
+  -- або задача вже не running — і API відповідав би {ok:true} брехливо.
+  if not found then
+    raise exception 'Task % not owned by worker % or not in running state', p_task_id, p_worker_id;
+  end if;
 end;
 $$;
 

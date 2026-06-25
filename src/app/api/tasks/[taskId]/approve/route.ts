@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { apiError } from "@/lib/api-error"
+
 import { createClient } from "@/lib/supabase/server"
 
 // Людина підтверджує задачу, що очікує дозволу перед незворотною дією.
@@ -21,7 +23,7 @@ export async function POST(
 
   const { error } = await supabase.rpc("approve_task", { p_task_id: taskId })
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
+    return apiError(error, 400, "Не вдалося підтвердити задачу")
   }
 
   return NextResponse.json({ ok: true })

@@ -12,11 +12,13 @@ type Props = {
   threadId: string
   userRole: UserRole
   disabled?: boolean
-  // Оптимістичне додавання повідомлення юзера у вікно чату
-  onSend?: (content: string) => void
+  // Оптимістичне додавання повідомлення юзера у вікно чату; повертає id
+  // доданого оптимістичного повідомлення, щоб відкотити його при помилці.
+  onSend?: (content: string) => string | undefined
+  onSendFailed?: (optimisticId: string) => void
 }
 
-export function InputBar({ threadId, disabled, onSend }: Props) {
+export function InputBar({ threadId, disabled, onSend, onSendFailed }: Props) {
   const [value, setValue] = useState("")
   const [pending, setPending] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -34,7 +36,7 @@ export function InputBar({ threadId, disabled, onSend }: Props) {
     if (!content || pending) return
 
     setPending(true)
-    onSend?.(content)
+    const optimisticId = onSend?.(content)
     setValue("")
     requestAnimationFrame(autoResize)
 
@@ -49,6 +51,10 @@ export function InputBar({ threadId, disabled, onSend }: Props) {
         throw new Error(body.error ?? "Не вдалося надіслати повідомлення")
       }
     } catch (e) {
+      // Відкочуємо оптимістичне повідомлення — інакше у чаті висить фантом,
+      // якого немає в базі.
+      if (optimisticId) onSendFailed?.(optimisticId)
+      setValue(content)
       toast.error("Помилка", {
         description: e instanceof Error ? e.message : String(e),
       })

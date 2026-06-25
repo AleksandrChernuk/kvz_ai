@@ -20,10 +20,7 @@ export async function POST() {
     .single<{ id: string }>()
 
   if (error || !data) {
-    return NextResponse.json(
-      { error: error?.message ?? "Не вдалося створити чат" },
-      { status: 500 }
-    )
+    return apiError(error, 500, "Не вдалося створити чат")
   }
 
   return NextResponse.json({ id: data.id })
