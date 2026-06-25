@@ -275,6 +275,8 @@ ops/                       — інфраструктура деплою (див
 | 010 | атомарний chat enqueue |
 | 011 | **гейт підтвердження** (awaiting_approval, request/approve/reject) |
 | 012 | complete_task backstop (відмова без approval) + індекси read-шляхів |
+| 013–016 | retry accounting, approval result binding, safe thread delete, access entities |
+| 017 | knowledge_bases.allowed_roles — похідна junction-таблиці (single source) |
 | 013 | послідовний retry-облік для fail_task/watchdog |
 | 014 | complete_task приймає тільки підтверджений result після approval |
 | 015 | безпечне видалення thread: заборона при активних задачах |

@@ -23,6 +23,11 @@ const accessEntitiesSql = readFileSync(
   "utf8"
 ).replace(/\s+/g, " ")
 
+const kbProjectionSql = readFileSync(
+  path.join(process.cwd(), "supabase/migrations/017_kb_allowed_roles_projection.sql"),
+  "utf8"
+).replace(/\s+/g, " ")
+
 describe("queue retry accounting migration", () => {
   it("requeues stale locks only when another attempt remains", () => {
     expect(retryAccountingSql).toContain("status = 'running'")
@@ -99,15 +104,38 @@ describe("access entities migration", () => {
   it("guards task completion by the task owner role and selected agent", () => {
     expect(accessEntitiesSql).toContain("can_role_access_agent")
     expect(accessEntitiesSql).toContain("v_role := coalesce(v_task.payload->>'user_role'")
+    expect(accessEntitiesSql).toContain("if v_agent is null then")
     expect(accessEntitiesSql).toContain(
-      "if v_agent is not null and not can_role_access_agent(v_role, v_agent) then"
+      "if not can_role_access_agent(v_role, v_agent) then"
     )
     expect(accessEntitiesSql).toContain("is not allowed for role")
+  })
+
+  it("keeps the complete_task running/ownership guard and empty-answer check", () => {
+    // regression guards that migration 016 must not drop again
+    expect(accessEntitiesSql).toContain(
+      "and locked_by = p_worker_id and status = 'running'"
+    )
+    expect(accessEntitiesSql).toContain(
+      "not owned by worker % or not in running state"
+    )
+    expect(accessEntitiesSql).toContain("result.answer is empty for task")
   })
 
   it("exposes a service-role-only ops smoke check", () => {
     expect(accessEntitiesSql).toContain("create or replace function ops_smoke_check")
     expect(accessEntitiesSql).toContain("grant execute on function ops_smoke_check() to service_role")
     expect(accessEntitiesSql).toContain("release_stale_locks_available")
+  })
+})
+
+describe("kb allowed_roles projection migration", () => {
+  it("derives allowed_roles from the junction table via trigger (single source)", () => {
+    expect(kbProjectionSql).toContain("create trigger kb_role_access_sync")
+    expect(kbProjectionSql).toContain(
+      "after insert or delete on knowledge_base_role_access"
+    )
+    expect(kbProjectionSql).toContain("update knowledge_bases")
+    expect(kbProjectionSql).toContain("from knowledge_base_role_access")
   })
 })

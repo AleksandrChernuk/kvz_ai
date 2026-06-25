@@ -170,7 +170,13 @@ begin
   v_role := coalesce(v_task.payload->>'user_role', 'viewer')::user_role;
   v_agent := coalesce(p_agent, v_task.agent);
 
-  if v_agent is not null and not can_role_access_agent(v_role, v_agent) then
+  -- DB — авторитетна межа: не покладаємось на те, що bash-воркер завжди
+  -- передасть agent. Без агента завершити не можна.
+  if v_agent is null then
+    raise exception 'Agent required to complete task %', p_task_id;
+  end if;
+
+  if not can_role_access_agent(v_role, v_agent) then
     raise exception 'Agent % is not allowed for role %', v_agent, v_role;
   end if;
 
