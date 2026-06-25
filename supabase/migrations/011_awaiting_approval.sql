@@ -54,7 +54,7 @@ begin
 end;
 $$;
 
-revoke execute on function request_approval(uuid, text, jsonb) from anon, authenticated;
+revoke execute on function request_approval(uuid, text, jsonb) from public, anon, authenticated;
 grant execute on function request_approval(uuid, text, jsonb) to service_role;
 
 -- -----------------------------------------------------------------------
@@ -93,7 +93,7 @@ begin
 end;
 $$;
 
-revoke execute on function approve_task(uuid) from anon;
+revoke execute on function approve_task(uuid) from public, anon;
 grant execute on function approve_task(uuid) to authenticated;
 
 -- -----------------------------------------------------------------------
@@ -129,5 +129,5 @@ begin
 end;
 $$;
 
-revoke execute on function reject_task(uuid, text) from anon;
+revoke execute on function reject_task(uuid, text) from public, anon;
 grant execute on function reject_task(uuid, text) to authenticated;
