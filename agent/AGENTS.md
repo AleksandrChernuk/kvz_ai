@@ -34,7 +34,9 @@ scripts/validate_result.py  deterministic result filter (math/format, no AI)
 `agent/.env` (see `.env.example`): `API_URL`, `WORKER_TOKEN`, optional
 `MCP_GATEWAY_URL`/`MCP_GATEWAY_TOKEN`, `CLAUDE_MODEL`, `KB_QUERY_JS`.
 
-LLMs run under **subscription**, not API keys: **Claude = brain** (`claude -p`,
-`claude login`) routes and answers; **Codex = executor** (`codex exec`, `codex
-login`) runs technical/code tasks. Both CLIs must be logged in on the worker host.
-Routing is fail-soft: if Codex is unavailable the task falls back to Claude.
+All under **subscription**, no API keys. **Claude = brain** — a pure router
+(`claude -p`, `claude login`): it only decides the executor, it does not answer.
+**Executors:** **Codex** (`codex exec`, code/technical) and **Gemini** (`gemini`,
+knowledge/KB answers). Each CLI must be logged in on the worker host. Fail-soft:
+Codex failure → knowledge executor; Gemini absent → Claude answers as a fallback
+until Gemini is set up.

@@ -31,16 +31,17 @@ KB_QUERY_JS=<repo>/connectors/kb-docs/dist/query-cli.js   # default works from r
 
 Run it:
 ```bash
-claude login                       # once — Claude subscription (brain)
-codex login                        # once — Codex subscription (executor)
+claude login                       # Claude subscription — the brain (router)
+codex login                        # Codex subscription — executor (code/technical)
+# gemini auth (CLI login or config) — executor (knowledge); optional for now
 cd connectors/kb-docs && npm ci && npm run build && cd ../..
 cp agent/.env.example agent/.env   # fill API_URL, WORKER_TOKEN
 ./agent/scripts/poll.sh            # or --once on a cron / a systemd service
 ```
 
-The brain (Claude) routes technical/code tasks to the Codex executor; everything
-else Claude answers from the knowledge base. If `codex` isn't logged in, those
-tasks fall back to Claude (no breakage).
+The brain (Claude) only routes: code/technical → Codex, knowledge → Gemini.
+Fail-soft — until `codex`/`gemini` are logged in, tasks fall back to Claude
+answering, so nothing breaks; wire them in to activate the real executors.
 
 Also run the watchdog on a schedule (else stale tasks never fail):
 `curl -X POST -H "Authorization: Bearer $WORKER_TOKEN" $API_URL/api/tasks/watchdog -d '{"timeout_minutes":5}'`
