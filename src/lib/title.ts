@@ -1,5 +1,5 @@
-// Генерує короткий заголовок треду з першого повідомлення.
-// Якщо є ANTHROPIC_API_KEY — можна замінити на Claude-запит.
+// Генерує короткий заголовок треду з першого повідомлення (детермінований
+// зріз, без LLM — заголовок не вартий виклику моделі).
 export function generateThreadTitle(message: string): string {
   const cleaned = message.replace(/\s+/g, " ").trim()
   if (cleaned.length <= 40) return cleaned

@@ -110,8 +110,10 @@ Compose, and prints the generated keys.
    ```text
    API_URL=https://ai.example.com
    WORKER_TOKEN=<same shared secret>
-   ANTHROPIC_API_KEY=<from 1Password>
    ```
+
+   The LLM runs via the Claude Code CLI under your subscription — run
+   `claude login` on the worker host. No API key.
 
 3. Deploy the Next.js app.
 4. Run Supabase SQL migrations from `supabase/migrations/`:

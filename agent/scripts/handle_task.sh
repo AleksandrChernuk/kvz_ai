@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # LLM-обробник задачі: читає TaskPayload з stdin, повертає TaskResult у stdout.
-# RAG-grounding: дістає фрагменти з рольових бібліотек kb-docs і відповідає
-# на їх основі; інакше — звичайна відповідь через Anthropic.
+# Працює через Claude Code CLI (`claude -p`) під ПІДПИСКОЮ — без ANTHROPIC_API_KEY
+# і без оплати за токени. RAG-grounding: дістає фрагменти з рольових бібліотек
+# kb-docs і відповідає на їх основі.
+#
+# Передумова: на хості воркера встановлений і залогінений `claude` CLI
+# (`claude login` під вашою підпискою). Жодних API-ключів.
 #
 # Env:
-#   ANTHROPIC_API_KEY — обовʼязковий
-#   CLAUDE_MODEL      — default claude-opus-4-8
-#   KB_QUERY_JS       — шлях до retrieval CLI конектора (default: репо/connectors/...)
+#   CLAUDE_MODEL — алиас або повний id моделі (default: opus)
+#   KB_QUERY_JS  — шлях до retrieval CLI конектора (default: репо/connectors/...)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY обовʼязковий}"
-MODEL="${CLAUDE_MODEL:-claude-opus-4-8}"
+command -v claude >/dev/null || { echo "потрібен залогінений claude CLI (підписка)" >&2; exit 1; }
+MODEL="${CLAUDE_MODEL:-opus}"
 KB_QUERY_JS="${KB_QUERY_JS:-$SCRIPT_DIR/../../connectors/kb-docs/dist/query-cli.js}"
 
 PAYLOAD=$(cat)
@@ -57,62 +60,43 @@ if [ "$GROUNDED" = "true" ]; then
 $CONTEXT"
 fi
 
-# Історія: тільки user/assistant, без початкових assistant-повідомлень
-# (перше повідомлення в API має бути user).
-MESSAGES=$(echo "$PAYLOAD" | jq '
-  def drop_leading_assistant:
-    if length > 0 and .[0].role == "assistant" then .[1:] | drop_leading_assistant else . end;
+# Промпт: компактна історія розмови + поточне питання. Token gate уже обрізав
+# контекст до ліміту. `claude -p` бере один промпт; система йде окремо.
+PROMPT=$(echo "$PAYLOAD" | jq -r '
   ([(.thread_context // [])[]
     | select(.role == "user" or .role == "assistant")
-    | {role, content}] | drop_leading_assistant)
-  + [{role: "user", content: .user_message}]')
-
-BODY=$(jq -n \
-  --arg model "$MODEL" \
-  --arg system "$SYSTEM" \
-  --argjson messages "$MESSAGES" \
-  '{
-    model: $model,
-    max_tokens: 16000,
-    thinking: {type: "adaptive"},
-    system: $system,
-    messages: $messages
-  }')
+    | "\(.role | ascii_upcase): \(.content)"] | join("\n\n")) as $hist
+  | (if ($hist | length) > 0 then $hist + "\n\n" else "" end)
+    + "ПИТАННЯ: " + .user_message')
 
 RESP_FILE=$(mktemp)
 trap 'rm -f "$RESP_FILE"' EXIT
 
-# До 3 спроб з backoff на 429/5xx/529
-HTTP_CODE=000
-for attempt in 1 2 3; do
-  HTTP_CODE=$(curl -s -o "$RESP_FILE" -w "%{http_code}" \
-    https://api.anthropic.com/v1/messages \
-    -H "x-api-key: $ANTHROPIC_API_KEY" \
-    -H "anthropic-version: 2023-06-01" \
-    -H "content-type: application/json" \
-    --max-time 300 \
-    -d "$BODY")
-  case "$HTTP_CODE" in
-    200) break ;;
-    429|500|529)
-      echo "attempt $attempt: HTTP $HTTP_CODE, retry…" >&2
-      sleep $((attempt * 10))
-      ;;
-    *)
-      echo "HTTP $HTTP_CODE: $(cat "$RESP_FILE")" >&2
-      exit 1
-      ;;
-  esac
-done
+# Виклик через підписку (без API-ключа). --allowed-tools "" — жодних інструментів,
+# лише відповідь. JSON-вивід містить .result і .usage.
+set +e
+printf '%s' "$PROMPT" | claude -p \
+  --model "$MODEL" \
+  --append-system-prompt "$SYSTEM" \
+  --output-format json \
+  --allowed-tools "" \
+  > "$RESP_FILE" 2>>/tmp/kvz-claude.log
+CLAUDE_RC=$?
+set -e
 
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "усі спроби вичерпано (HTTP $HTTP_CODE)" >&2
+if [ "$CLAUDE_RC" -ne 0 ]; then
+  echo "claude CLI rc=$CLAUDE_RC (див. /tmp/kvz-claude.log)" >&2
   exit 1
 fi
 
-ANSWER=$(jq -r '[.content[] | select(.type == "text") | .text] | join("\n\n")' "$RESP_FILE")
+if [ "$(jq -r '.is_error // false' "$RESP_FILE" 2>/dev/null)" = "true" ]; then
+  echo "claude повернув is_error: $(cat "$RESP_FILE")" >&2
+  exit 1
+fi
+
+ANSWER=$(jq -r '.result // empty' "$RESP_FILE")
 if [ -z "$ANSWER" ]; then
-  echo "порожня відповідь моделі: $(cat "$RESP_FILE")" >&2
+  echo "порожня відповідь claude: $(cat "$RESP_FILE")" >&2
   exit 1
 fi
 
@@ -124,7 +108,7 @@ if [ "$GROUNDED" = "true" ]; then
     '["Відповідь сформовано з бази знань (RAG)", ("Джерела: " + ($s | join(", ")))]')
   AGENT="kb"
 else
-  STEPS=$(jq -c -n --arg m "$MODEL" '["Запит оброблено через Anthropic API (" + $m + ")"]')
+  STEPS=$(jq -c -n --arg m "$MODEL" '["Оброблено через Claude CLI / підписка (" + $m + ")"]')
   AGENT="codex"
 fi
 

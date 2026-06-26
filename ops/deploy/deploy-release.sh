@@ -60,13 +60,15 @@ done
 set -a
 . '$APP_ROOT/shared/env/worker.env'
 set +a
-for name in API_URL WORKER_TOKEN ANTHROPIC_API_KEY; do
+for name in API_URL WORKER_TOKEN; do
   eval value=\\\${\$name:-}
   if [ -z \"\$value\" ]; then
     echo \"Missing required worker env: \$name\" >&2
     missing=1
   fi
 done
+# LLM runs via the Claude Code CLI under subscription (claude login on the host),
+# so no ANTHROPIC_API_KEY is required in worker env.
 [ \"\$missing\" -eq 0 ]
 npm ci
 NODE_ENV='$NODE_ENV' npm run build

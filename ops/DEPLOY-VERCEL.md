@@ -17,19 +17,23 @@ queued… and **nothing ever answers it**. The worker is the brain.
 
 The worker must run on something always-on: a small VPS, Railway/Fly.io/Render
 worker, or even your Mac for testing. It needs `node`, `jq`, `curl`, `python3`,
-the built connector, and these env vars:
+a **logged-in `claude` CLI** (your subscription), and the built connector.
+
+The LLM runs through the **Claude Code CLI under subscription** (`claude -p`) —
+**no `ANTHROPIC_API_KEY`, no per-token billing**. Env vars:
 
 ```
 API_URL=https://<your-vercel-app>.vercel.app
 WORKER_TOKEN=<same value as in Vercel>
-ANTHROPIC_API_KEY=sk-ant-...
+# CLAUDE_MODEL=opus   (optional)
 KB_QUERY_JS=<repo>/connectors/kb-docs/dist/query-cli.js   # default works from repo root
 ```
 
 Run it:
 ```bash
+claude login                       # once — your Pro/Max subscription
 cd connectors/kb-docs && npm ci && npm run build && cd ../..
-cp agent/.env.example agent/.env   # fill API_URL, WORKER_TOKEN, ANTHROPIC_API_KEY
+cp agent/.env.example agent/.env   # fill API_URL, WORKER_TOKEN
 ./agent/scripts/poll.sh            # or --once on a cron / a systemd service
 ```
 

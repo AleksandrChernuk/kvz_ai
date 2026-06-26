@@ -91,11 +91,13 @@ WORKER_TOKEN
 ```text
 API_URL
 WORKER_TOKEN
-ANTHROPIC_API_KEY
 ```
 
 `WORKER_TOKEN` — спільний секрет між Next.js API і воркером. Значення має бути
 однаковим у web і worker runtime.
+
+LLM на воркері працює через **Claude Code CLI під підпискою** (`claude -p`,
+один раз `claude login`) — без `ANTHROPIC_API_KEY` і без оплати за токени.
 
 ```bash
 openssl rand -hex 32
@@ -176,7 +178,7 @@ User → /api/chat → зберігає Message + створює Task (pending)
                                   ↓
               token gate: check_token_limit.py  (детермінований, 5000 ток./задачу, --trim)
                                   ↓
-              handle_task.sh → Anthropic API / MCP бази знань
+              handle_task.sh → Claude CLI (підписка) / MCP бази знань
                                   ↓
               детермінований фільтр: validate_result.py  (математика/формат, без AI)
                                   ↓

@@ -31,5 +31,8 @@ scripts/validate_result.py  deterministic result filter (math/format, no AI)
 
 ## Config
 
-`agent/.env` (see `.env.example`): `API_URL`, `WORKER_TOKEN`, `ANTHROPIC_API_KEY`,
-optional `MCP_GATEWAY_URL`/`MCP_GATEWAY_TOKEN`, `KB_QUERY_JS`.
+`agent/.env` (see `.env.example`): `API_URL`, `WORKER_TOKEN`, optional
+`MCP_GATEWAY_URL`/`MCP_GATEWAY_TOKEN`, `CLAUDE_MODEL`, `KB_QUERY_JS`.
+
+LLM runs through the **Claude Code CLI under subscription** (`claude -p`), not an
+API key — `claude login` on the worker host. No `ANTHROPIC_API_KEY`.
