@@ -1,10 +1,17 @@
 import { createClient } from "@/lib/supabase/server"
 import type { Task } from "@/types/database"
 
+// Long-lived SSE needs the Node runtime, never the edge. On serverless (Vercel)
+// the function still times out (maxDuration), so this is a best-effort fallback —
+// the UI's primary channel is Supabase Realtime (websocket) in the browser.
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+export const maxDuration = 60
+
 // GET /api/tasks/[taskId]/stream
 // SSE-стрім статусу задачі. Закривається на термінальному статусі.
-// Працює тільки на довгоживучому node-сервері (Realtime websocket),
-// не на serverless — для UI основний канал це Supabase Realtime у браузері.
+// Основний канал статусу в UI — Supabase Realtime у браузері; цей стрім
+// допоміжний і на serverless обмежений maxDuration.
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ taskId: string }> }
