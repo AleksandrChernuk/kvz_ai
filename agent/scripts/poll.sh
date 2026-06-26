@@ -148,7 +148,7 @@ process_one() {
   fi
 
   allowed_agents=$(echo "$agents_payload" | jq -c '[.agents[] | {key, name, description}]')
-  allowed_kbs=$(echo "$kbs_payload" | jq -c '[.knowledge_bases[] | {name, description, mcp_server}]')
+  allowed_kbs=$(echo "$kbs_payload" | jq -c '[.knowledge_bases[] | {name, description, mcp_server, library: (.mcp_config.library // null)}]')
   trimmed=$(echo "$trimmed" | jq -c \
     --argjson agents "$allowed_agents" \
     --argjson kbs "$allowed_kbs" \

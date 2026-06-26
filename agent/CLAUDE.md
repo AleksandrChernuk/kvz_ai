@@ -7,7 +7,7 @@ You are the orchestrator for the kvz-ai platform. You process tasks from the Sup
 | Script | Role |
 |---|---|
 | `scripts/poll.sh` | Queue mechanics: claim → token gate → handler → deterministic filter → approval gate → complete/fail. `--once` for cron. Runs watchdog every 10 iterations. |
-| `scripts/handle_task.sh` | LLM handler: TaskPayload on stdin → Anthropic API (`claude-opus-4-8`, adaptive thinking) → TaskResult on stdout. Override via `HANDLER` env. |
+| `scripts/handle_task.sh` | LLM handler with RAG grounding: retrieves passages from the role-scoped kb-docs libraries (via `KB_QUERY_JS` CLI), grounds the Anthropic answer on them (`agent_used: "kb"` + sources), else falls back to a plain answer (`codex`). Override via `HANDLER` env. |
 | `scripts/check_token_limit.py` | Deterministic 5000-token gate, `--trim` drops oldest context. |
 | `scripts/validate_result.py` | Deterministic result filter (math/format, no AI). `kind` → validator (weight/selection/ilogic/dxf/json). Exit 0 pass, 1 fail+reason. |
 
@@ -56,6 +56,25 @@ chat. Approve re-queues the task with `approved_at` set, so the worker re-claims
 it, sees the approval, and performs the irreversible step. Reject → `cancelled`.
 
 **Never update `tasks` status directly.** Always use the endpoints — they call atomic PostgreSQL functions.
+
+## RAG grounding (kb-docs)
+
+`handle_task.sh` enriches the answer from the company knowledge base before
+calling the LLM:
+
+1. `poll.sh` injects `available_knowledge_bases` (role-filtered via `/api/kb`),
+   each entry carrying `mcp_server` and `library` (from `mcp_config.library`).
+2. For every `kb-docs` library the role may access, the handler runs the
+   connector retrieval CLI (`KB_QUERY_JS`, default
+   `connectors/kb-docs/dist/query-cli.js`) over the user message.
+3. Top passages are injected into the system prompt; the model must answer only
+   from them and cite `[library/document]`. Result → `agent_used: "kb"` with the
+   sources in `steps`. If nothing is retrieved, it falls back to a plain answer.
+
+**Deploy note:** the connector must be built (`cd connectors/kb-docs && npm ci
+&& npm run build`) so `dist/query-cli.js` exists, otherwise grounding silently
+falls back. Role access is enforced before retrieval — the connector never sees
+a library the role can't access.
 
 ## Token gate (mandatory, before dispatch)
 

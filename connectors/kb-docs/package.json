@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Read-only knowledge-base MCP connector for kvz-ai (NotebookLM-style document store) behind ContextForge.",
   "bin": {
-    "kb-docs": "dist/server.js"
+    "kb-docs": "dist/server.js",
+    "kb-docs-query": "dist/query-cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

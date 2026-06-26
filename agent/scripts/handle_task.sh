@@ -1,20 +1,41 @@
 #!/usr/bin/env bash
 # LLM-обробник задачі: читає TaskPayload з stdin, повертає TaskResult у stdout.
-# Викликає Anthropic Messages API через curl.
+# RAG-grounding: дістає фрагменти з рольових бібліотек kb-docs і відповідає
+# на їх основі; інакше — звичайна відповідь через Anthropic.
 #
 # Env:
 #   ANTHROPIC_API_KEY — обовʼязковий
 #   CLAUDE_MODEL      — default claude-opus-4-8
+#   KB_QUERY_JS       — шлях до retrieval CLI конектора (default: репо/connectors/...)
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 : "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY обовʼязковий}"
 MODEL="${CLAUDE_MODEL:-claude-opus-4-8}"
+KB_QUERY_JS="${KB_QUERY_JS:-$SCRIPT_DIR/../../connectors/kb-docs/dist/query-cli.js}"
 
 PAYLOAD=$(cat)
 
 USER_ROLE=$(echo "$PAYLOAD" | jq -r '.user_role // "viewer"')
+USER_MESSAGE=$(echo "$PAYLOAD" | jq -r '.user_message // ""')
 AVAILABLE_AGENTS=$(echo "$PAYLOAD" | jq -c '.available_agents // []')
 AVAILABLE_KBS=$(echo "$PAYLOAD" | jq -c '.available_knowledge_bases // []')
+
+# --- RAG retrieval ----------------------------------------------------------
+# Бібліотеки kb-docs, доступні цій ролі (доступ уже відфільтрований воркером).
+KB_LIBS=$(echo "$AVAILABLE_KBS" | jq -r '.[] | select(.mcp_server == "kb-docs") | (.library // "default")' | sort -u)
+HITS='[]'
+if [ -n "$KB_LIBS" ] && [ -n "$USER_MESSAGE" ] && [ -f "$KB_QUERY_JS" ] && command -v node >/dev/null; then
+  while IFS= read -r lib; do
+    [ -z "$lib" ] && continue
+    out=$(node "$KB_QUERY_JS" --query "$USER_MESSAGE" --library "$lib" --limit 4 2>/dev/null || echo '')
+    libhits=$(echo "$out" | jq -c '.data.hits // []' 2>/dev/null || echo '[]')
+    HITS=$(jq -c -n --argjson a "$HITS" --argjson b "$libhits" '$a + $b')
+  done <<< "$KB_LIBS"
+fi
+TOPHITS=$(echo "$HITS" | jq -c 'sort_by(-.score) | .[0:5]')
+GROUNDED=$(echo "$TOPHITS" | jq 'length > 0')
 
 SYSTEM="Ти — асистент внутрішньої системи КВЗ. Відповідай українською, стисло і по суті. \
 Роль користувача: $USER_ROLE. \
@@ -22,6 +43,15 @@ SYSTEM="Ти — асистент внутрішньої системи КВЗ. 
 Доступні для цієї ролі бази знань/MCP-сервіси: $AVAILABLE_KBS. \
 Для ролі viewer — тільки довідкові відповіді, жодних інструкцій зі зміни даних чи виконання коду. \
 Якщо для точної відповіді бракує даних (немає доступу до баз знань) — чесно скажи про це."
+
+if [ "$GROUNDED" = "true" ]; then
+  CONTEXT=$(echo "$TOPHITS" | jq -r '.[] | "[\(.library)/\(.docId)] \(.title)\n\(.snippet)\n"')
+  SOURCES=$(echo "$TOPHITS" | jq -c '[.[] | "\(.library)/\(.docId)"] | unique')
+  SYSTEM="$SYSTEM
+
+ФРАГМЕНТИ БАЗИ ЗНАНЬ. Відповідай ЛИШЕ на їх основі, став посилання у форматі [бібліотека/документ]. Якщо відповіді в них немає — чесно скажи, не вигадуй:
+$CONTEXT"
+fi
 
 # Історія: тільки user/assistant, без початкових assistant-повідомлень
 # (перше повідомлення в API має бути user).
@@ -85,14 +115,24 @@ fi
 IN_TOK=$(jq '.usage.input_tokens // 0' "$RESP_FILE")
 OUT_TOK=$(jq '.usage.output_tokens // 0' "$RESP_FILE")
 
+if [ "$GROUNDED" = "true" ]; then
+  STEPS=$(jq -c -n --argjson s "$SOURCES" \
+    '["Відповідь сформовано з бази знань (RAG)", ("Джерела: " + ($s | join(", ")))]')
+  AGENT="kb"
+else
+  STEPS=$(jq -c -n --arg m "$MODEL" '["Запит оброблено через Anthropic API (" + $m + ")"]')
+  AGENT="codex"
+fi
+
 jq -n \
   --arg answer "$ANSWER" \
-  --arg model "$MODEL" \
+  --arg agent "$AGENT" \
+  --argjson steps "$STEPS" \
   --argjson input "$IN_TOK" \
   --argjson output "$OUT_TOK" \
   '{
     answer: $answer,
-    agent_used: "codex",
-    steps: ["Запит оброблено через Anthropic API (\($model))"],
+    agent_used: $agent,
+    steps: $steps,
     tokens: {input: $input, output: $output}
   }'
