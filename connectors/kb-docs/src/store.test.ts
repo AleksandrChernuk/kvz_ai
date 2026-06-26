@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest"
 
+import { dataDir } from "./config.js"
 import {
   buildChunks,
   chunkDoc,
   getById,
   listLibraries,
+  loadDocs,
   parseDoc,
   search,
   type Doc,
@@ -85,5 +87,18 @@ describe("getById / listLibraries", () => {
 
   it("lists distinct libraries", () => {
     expect(listLibraries(docs)).toEqual(["finansy", "zagalna", "zvaryuvannya"])
+  })
+})
+
+describe("library/folder drift guard", () => {
+  // The data/<folder> set must match the libraries seeded by migration 018.
+  // A mismatch means a knowledge_bases row points at a missing folder (silent
+  // empty retrieval) or a folder is orphaned (unreachable docs).
+  it("data folders match the seeded knowledge_bases libraries", () => {
+    expect(listLibraries(loadDocs(dataDir()))).toEqual([
+      "finansy",
+      "zagalna",
+      "zvaryuvannya",
+    ])
   })
 })

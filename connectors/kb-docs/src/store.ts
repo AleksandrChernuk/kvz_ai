@@ -160,7 +160,9 @@ export function search(
   if (terms.length === 0) return []
 
   const docTokens = scope.map((c) => tokenize(c.text))
-  const avgLen = docTokens.reduce((s, t) => s + t.length, 0) / scope.length
+  // `|| 1` guards a tiny library whose chunks all tokenize to nothing.
+  const avgLen =
+    docTokens.reduce((s, t) => s + t.length, 0) / scope.length || 1
 
   // Document frequency per term (prefix-aware).
   const df = new Map<string, number>()
@@ -181,7 +183,9 @@ export function search(
       const tf = toks.filter((t) => matches(t, term)).length
       if (tf === 0) continue
       const n = df.get(term) ?? 0
-      const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5))
+      // Floor the idf so a term present in every chunk of a small library still
+      // contributes (otherwise the most topical term can score ~0 and drop out).
+      const idf = Math.max(0.05, Math.log(1 + (N - n + 0.5) / (n + 0.5)))
       score += idf * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * len) / avgLen)))
     }
     return {

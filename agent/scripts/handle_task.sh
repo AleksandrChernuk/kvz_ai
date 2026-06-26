@@ -24,13 +24,17 @@ AVAILABLE_KBS=$(echo "$PAYLOAD" | jq -c '.available_knowledge_bases // []')
 
 # --- RAG retrieval ----------------------------------------------------------
 # Бібліотеки kb-docs, доступні цій ролі (доступ уже відфільтрований воркером).
-KB_LIBS=$(echo "$AVAILABLE_KBS" | jq -r '.[] | select(.mcp_server == "kb-docs") | (.library // "default")' | sort -u)
+# Рядки без mcp_config.library ПРОПУСКАЄМО — не розширюємо пошук (інакше роль
+# могла б дістати неконфігуровану бібліотеку повністю).
+KB_LIBS=$(echo "$AVAILABLE_KBS" | jq -r '.[] | select(.mcp_server == "kb-docs") | .library | select(. != null and . != "")' | sort -u)
 HITS='[]'
 if [ -n "$KB_LIBS" ] && [ -n "$USER_MESSAGE" ] && [ -f "$KB_QUERY_JS" ] && command -v node >/dev/null; then
   while IFS= read -r lib; do
     [ -z "$lib" ] && continue
     out=$(node "$KB_QUERY_JS" --query "$USER_MESSAGE" --library "$lib" --limit 4 2>/dev/null || echo '')
-    libhits=$(echo "$out" | jq -c '.data.hits // []' 2>/dev/null || echo '[]')
+    # top-2 на бібліотеку перед злиттям: BM25-оцінки НЕ порівнянні між
+    # бібліотеками (idf рахується в межах кожної), тож обмежуємо внесок кожної.
+    libhits=$(echo "$out" | jq -c '(.data.hits // []) | sort_by(-.score) | .[0:2]' 2>/dev/null || echo '[]')
     HITS=$(jq -c -n --argjson a "$HITS" --argjson b "$libhits" '$a + $b')
   done <<< "$KB_LIBS"
 fi

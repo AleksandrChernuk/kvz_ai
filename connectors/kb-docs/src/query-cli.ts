@@ -23,9 +23,20 @@ if (!query) {
   process.exit(2)
 }
 
+// Deny unscoped retrieval: the worker grounding path MUST always scope to a
+// role-allowed library. An empty/missing --library would otherwise fall through
+// to search(...)'s "all libraries" branch and bypass the role boundary.
 const library = arg("library")
+if (!library) {
+  process.stderr.write("--library is required (unscoped retrieval is not allowed)\n")
+  process.exit(2)
+}
+
 const limit = Math.min(Number(arg("limit") ?? "4") || 4, LIMITS.maxResults)
 
+// NB: auth here is a no-op in the worker path (token == the configured token).
+// The real access boundary is the worker, which only passes role-allowed
+// libraries; this connector merely filters and validates input.
 const token = connectorToken()
 const connector = new KbDocsConnector(loadDocs(dataDir()), token)
 const res = connector.search({ query, library, limit }, { token })
