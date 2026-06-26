@@ -358,9 +358,20 @@ npm run lint        # ESLint
 npx tsc --noEmit    # типи
 npm test            # vitest + self-test token gate
 npm run build       # production build (перед деплоєм)
+./scripts/db-test/run.sh   # інтеграційні тести БД (міграції + функції + RLS)
 ```
 
 Запускати після будь-яких змін коду.
+
+### Відомі advisory залежностей (не блокери)
+
+`npm audit` показує транзитивні попередження без реального runtime-ризику:
+- root: `postcss` всередині `next@16` (XSS у CSS-стрингіфікації, build-time; «фікс»
+  від npm відкочує Next — ігноруємо до апдейту Next);
+- `connectors/kb-docs`: ланцюг `vitest → vite → esbuild` — **dev-залежності**, у
+  рантайм конектора (`dist/` + MCP SDK + zod) не потрапляють.
+
+SAST: `semgrep --config=auto` — 0 знахідок.
 
 Після self-host deploy:
 

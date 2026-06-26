@@ -39,3 +39,15 @@ projection trigger · 018 seed kb-docs role-scoped libraries
 ```
 
 After applying: create the first user, set their `role = 'admin'` in `profiles`.
+
+## Testing
+
+- `src/lib/__tests__/queue-migrations.test.ts` — asserts migration **text**
+  (cheap, runs in `npm test`). Catches dropped guards by string match.
+- `scripts/db-test/run.sh` — **integration**: applies all migrations to a real
+  throwaway Postgres and runs the actual functions + RLS (claim/complete/approve
+  guards, result binding, agent guard, per-user isolation). This is the layer
+  that catches execution regressions. Runs in CI.
+
+When you change a queue function, add/extend an assertion in
+`scripts/db-test/tests.sql`, not just the text test.

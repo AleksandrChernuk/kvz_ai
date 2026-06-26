@@ -41,3 +41,17 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Connector tests (kb-docs)
+        run: |
+          cd connectors/kb-docs
+          npm ci || npm install
+          npm run typecheck
+          npm test
+
+      - name: DB integration tests (migrations + functions + RLS)
+        run: |
+          # initdb/pg_ctl live under /usr/lib/postgresql/<ver>/bin on the runner
+          PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true)"
+          [ -n "$PGBIN" ] && export PATH="$PGBIN:$PATH"
+          ./scripts/db-test/run.sh
