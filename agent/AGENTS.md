@@ -34,5 +34,7 @@ scripts/validate_result.py  deterministic result filter (math/format, no AI)
 `agent/.env` (see `.env.example`): `API_URL`, `WORKER_TOKEN`, optional
 `MCP_GATEWAY_URL`/`MCP_GATEWAY_TOKEN`, `CLAUDE_MODEL`, `KB_QUERY_JS`.
 
-LLM runs through the **Claude Code CLI under subscription** (`claude -p`), not an
-API key — `claude login` on the worker host. No `ANTHROPIC_API_KEY`.
+LLMs run under **subscription**, not API keys: **Claude = brain** (`claude -p`,
+`claude login`) routes and answers; **Codex = executor** (`codex exec`, `codex
+login`) runs technical/code tasks. Both CLIs must be logged in on the worker host.
+Routing is fail-soft: if Codex is unavailable the task falls back to Claude.

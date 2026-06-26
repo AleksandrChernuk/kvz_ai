@@ -8,7 +8,8 @@ host: `curl`, `jq`, `python3`, and `node` (for RAG grounding).
 | Script | Contract |
 |---|---|
 | `poll.sh` | `--once` for cron, else loop. claim → token gate → enrich (role-scoped `/api/agents` + `/api/kb`, includes `library`) → handler → `validate_result.py` → approval gate → complete/fail. Watchdog every 10th iteration. |
-| `handle_task.sh` | stdin `TaskPayload` → stdout `TaskResult`. RAG: retrieves from each role-allowed kb-docs library via `KB_QUERY_JS`, grounds the Anthropic answer (`agent_used:"kb"` + sources), else plain (`codex`). Override with `HANDLER` env. |
+| `handle_task.sh` | stdin `TaskPayload` → stdout `TaskResult`. **Brain = Claude:** routes technical tasks (code/script/calc) to the Codex executor, else answers itself with RAG grounding from role-allowed kb-docs libraries (`agent_used:"kb"` + sources, or `claude`). LLM via `claude -p` under subscription. Override with `HANDLER` env. |
+| `handle_codex.sh` | **Executor = Codex.** stdin `TaskPayload` → `codex exec` under subscription (`codex login`), read-only sandbox → `TaskResult` (`agent_used:"codex"`). Invoked by the router; fails soft back to Claude. |
 | `check_token_limit.py` | deterministic 5000-token gate. exit 0 ok / 1 over / 2 malformed. `--trim` drops oldest context. `--self-test`. |
 | `validate_result.py` | deterministic result filter (weight/selection/ilogic/dxf/json). exit 0 pass / 1 fail+reason. `--self-test`. **No AI.** |
 

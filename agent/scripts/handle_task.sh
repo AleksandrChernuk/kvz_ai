@@ -25,6 +25,27 @@ USER_MESSAGE=$(echo "$PAYLOAD" | jq -r '.user_message // ""')
 AVAILABLE_AGENTS=$(echo "$PAYLOAD" | jq -c '.available_agents // []')
 AVAILABLE_KBS=$(echo "$PAYLOAD" | jq -c '.available_knowledge_bases // []')
 
+# --- Routing: Claude = мозок, Codex = виконавець ----------------------------
+# Технічні задачі (код/скрипт/розрахунок) віддаємо Codex-виконавцю, якщо роль
+# має доступ до агента codex і CLI залогінений. Усе інше відповідає Claude
+# (нижче, з RAG). Будь-яка помилка Codex → fail-soft назад на Claude.
+ROUTE="claude"
+LC_MSG=$(printf '%s' "$USER_MESSAGE" | tr '[:upper:]' '[:lower:]')
+case "$LC_MSG" in
+  *код*|*скрипт*|*функці*|*програм*|*debug*|*деба*|*баг*|*refactor*|*implement*|*python*|*javascript*|*typescript*|*розрахуй*|*порахуй*|*обчисл*|*згенеруй .*dxf*|*ilogic*)
+    ROUTE="codex" ;;
+esac
+if [ "$ROUTE" = "codex" ]; then
+  echo "$AVAILABLE_AGENTS" | jq -e '.[] | select(.key == "codex")' >/dev/null 2>&1 || ROUTE="claude"
+fi
+if [ "$ROUTE" = "codex" ] && command -v codex >/dev/null; then
+  if codex_out=$(printf '%s' "$PAYLOAD" | "$SCRIPT_DIR/handle_codex.sh" 2>>/tmp/kvz-codex.log); then
+    printf '%s' "$codex_out"
+    exit 0
+  fi
+  echo "codex виконавець недоступний — fallback на claude" >&2
+fi
+
 # --- RAG retrieval ----------------------------------------------------------
 # Бібліотеки kb-docs, доступні цій ролі (доступ уже відфільтрований воркером).
 # Рядки без mcp_config.library ПРОПУСКАЄМО — не розширюємо пошук (інакше роль

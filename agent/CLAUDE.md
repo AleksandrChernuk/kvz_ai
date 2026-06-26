@@ -11,9 +11,10 @@ You are the orchestrator for the kvz-ai platform. You process tasks from the Sup
 | `scripts/check_token_limit.py` | Deterministic 5000-token gate, `--trim` drops oldest context. |
 | `scripts/validate_result.py` | Deterministic result filter (math/format, no AI). `kind` → validator (weight/selection/ilogic/dxf/json). Exit 0 pass, 1 fail+reason. |
 
-Config: `agent/.env` (see `.env.example`) — `API_URL`, `WORKER_TOKEN`. The LLM runs
-via the **Claude Code CLI under subscription** (`claude -p`, `claude login` on the
-host) — no `ANTHROPIC_API_KEY`.
+Config: `agent/.env` (see `.env.example`) — `API_URL`, `WORKER_TOKEN`. Both LLMs run
+under **subscription**, no API keys: **Claude = brain** (`claude -p`, `claude
+login`) routes + answers; **Codex = executor** (`codex exec`, `codex login`) does
+technical/code tasks. The worker host needs both CLIs logged in.
 
 ## Authentication
 

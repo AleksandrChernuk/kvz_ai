@@ -31,7 +31,7 @@ jobs:
         run: npm ci
 
       - name: Check shell scripts
-        run: bash -n agent/scripts/poll.sh agent/scripts/handle_task.sh ops/deploy/deploy-release.sh
+        run: bash -n agent/scripts/poll.sh agent/scripts/handle_task.sh agent/scripts/handle_codex.sh ops/deploy/deploy-release.sh scripts/db-test/run.sh
 
       - name: Lint
         run: npm run lint

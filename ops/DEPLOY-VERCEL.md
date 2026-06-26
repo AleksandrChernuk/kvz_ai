@@ -31,11 +31,16 @@ KB_QUERY_JS=<repo>/connectors/kb-docs/dist/query-cli.js   # default works from r
 
 Run it:
 ```bash
-claude login                       # once — your Pro/Max subscription
+claude login                       # once — Claude subscription (brain)
+codex login                        # once — Codex subscription (executor)
 cd connectors/kb-docs && npm ci && npm run build && cd ../..
 cp agent/.env.example agent/.env   # fill API_URL, WORKER_TOKEN
 ./agent/scripts/poll.sh            # or --once on a cron / a systemd service
 ```
+
+The brain (Claude) routes technical/code tasks to the Codex executor; everything
+else Claude answers from the knowledge base. If `codex` isn't logged in, those
+tasks fall back to Claude (no breakage).
 
 Also run the watchdog on a schedule (else stale tasks never fail):
 `curl -X POST -H "Authorization: Bearer $WORKER_TOKEN" $API_URL/api/tasks/watchdog -d '{"timeout_minutes":5}'`
