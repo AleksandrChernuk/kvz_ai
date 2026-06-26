@@ -4,7 +4,7 @@ import { emitAudit, type AuditEvent } from "./audit.js"
 import { LIMITS } from "./config.js"
 import { TokenBucket } from "./ratelimit.js"
 import { fetchInput, searchInput } from "./schema.js"
-import { getById, search, type Doc } from "./store.js"
+import { buildChunks, getById, search, type Chunk, type Doc } from "./store.js"
 
 export type CallContext = {
   // Token presented by the caller (gateway/worker). Compared to expectedToken.
@@ -23,6 +23,7 @@ export type ToolResult =
 // egress — the document store is local, so SSRF does not apply.
 export class KbDocsConnector {
   private readonly bucket: TokenBucket
+  private readonly chunks: Chunk[]
 
   constructor(
     private readonly docs: Doc[],
@@ -31,6 +32,7 @@ export class KbDocsConnector {
   ) {
     this.bucket =
       bucket ?? new TokenBucket(LIMITS.rateCapacity, LIMITS.rateRefillPerSec)
+    this.chunks = buildChunks(docs)
   }
 
   private authOk(ctx: CallContext): boolean {
@@ -84,7 +86,7 @@ export class KbDocsConnector {
   search(rawInput: unknown, ctx: CallContext): ToolResult {
     return this.run("kb_search", ctx, () => {
       const input = searchInput.parse(rawInput)
-      const hits = search(this.docs, input.query, input.limit)
+      const hits = search(this.chunks, input.query, input.limit, input.library)
       return { data: { hits }, resultCount: hits.length }
     })
   }
@@ -92,13 +94,20 @@ export class KbDocsConnector {
   fetch(rawInput: unknown, ctx: CallContext): ToolResult {
     return this.run("kb_fetch", ctx, () => {
       const input = fetchInput.parse(rawInput)
-      const doc = getById(this.docs, input.id)
+      const doc = getById(this.docs, input.id, input.library)
       if (!doc) {
         // Not found is a normal structured result, not an error.
         return { data: { found: false }, resultCount: 0 }
       }
       return {
-        data: { found: true, id: doc.id, title: doc.title, tags: doc.tags, text: doc.text },
+        data: {
+          found: true,
+          id: doc.id,
+          library: doc.library,
+          title: doc.title,
+          tags: doc.tags,
+          text: doc.text,
+        },
         resultCount: 1,
       }
     })

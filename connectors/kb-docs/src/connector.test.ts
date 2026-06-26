@@ -5,8 +5,8 @@ import { TokenBucket } from "./ratelimit.js"
 import { parseDoc, type Doc } from "./store.js"
 
 const docs: Doc[] = [
-  parseDoc("ventilation", "# Підбір вентилятора\ntags: вентиляція\nтиск і продуктивність."),
-  parseDoc("pricing", "# Ціна\nмаржа замовлення."),
+  parseDoc("ventilation", "zagalna", "# Підбір вентилятора\ntags: вентиляція\nтиск і продуктивність."),
+  parseDoc("pricing", "finansy", "# Ціна\nмаржа замовлення."),
 ]
 
 function make(token: string | null = null, bucket?: TokenBucket) {
@@ -65,6 +65,21 @@ describe("search / fetch behavior", () => {
     const r = make().fetch({ id: "nope" }, {})
     expect(r).toMatchObject({ ok: true, resultCount: 0 })
     if (r.ok) expect(r.data).toMatchObject({ found: false })
+  })
+
+  it("scopes search to the requested library", () => {
+    const r = make().search({ query: "маржа", library: "finansy" }, {})
+    expect(r).toMatchObject({ ok: true })
+    if (r.ok) expect(r.resultCount).toBeGreaterThan(0)
+    const none = make().search({ query: "маржа", library: "zagalna" }, {})
+    if (none.ok) expect(none.resultCount).toBe(0)
+  })
+
+  it("rejects an invalid library id", () => {
+    expect(make().search({ query: "маржа", library: "../x" }, {})).toMatchObject({
+      ok: false,
+      status: "invalid",
+    })
   })
 })
 

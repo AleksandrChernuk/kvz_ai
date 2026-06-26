@@ -1,24 +1,39 @@
-import { readdirSync, readFileSync } from "node:fs"
+import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 import { LIMITS } from "./config.js"
 import { redact } from "./redact.js"
 
+// A library is a folder under the data dir (e.g. data/zvaryuvannya/). Documents
+// directly in the data root belong to the "default" library. Each role-scoped
+// library maps to one knowledge_bases row in kvz-ai; role access is enforced by
+// the worker before this connector is called.
+
 export type Doc = {
   id: string
+  library: string
   title: string
   tags: string[]
   text: string
 }
 
+export type Chunk = {
+  docId: string
+  library: string
+  title: string
+  ordinal: number
+  text: string
+}
+
 export type SearchHit = {
-  id: string
+  docId: string
+  library: string
   title: string
   score: number
   snippet: string
 }
 
-function tokenize(s: string): string[] {
+export function tokenize(s: string): string[] {
   return s
     .toLowerCase()
     .normalize("NFKD")
@@ -27,9 +42,7 @@ function tokenize(s: string): string[] {
     .filter((t) => t.length > 1)
 }
 
-// Parse a `<id>.md` file: first `# Heading` is the title, an optional
-// `tags: a, b` line sets tags, the remainder is the body.
-export function parseDoc(id: string, raw: string): Doc {
+export function parseDoc(id: string, library: string, raw: string): Doc {
   const lines = raw.split(/\r?\n/)
   let title = id
   const tags: string[] = []
@@ -48,63 +61,150 @@ export function parseDoc(id: string, raw: string): Doc {
       body.push(line)
     }
   }
-  return { id, title, tags, text: body.join("\n").trim() }
+  return { id, library, title, tags, text: body.join("\n").trim() }
+}
+
+// Split a document into passage chunks on blank lines, packing paragraphs up to
+// ~chunkChars so retrieval returns focused passages, not whole documents.
+export function chunkDoc(doc: Doc): Chunk[] {
+  const paras = doc.text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+  const chunks: Chunk[] = []
+  let buf = ""
+  const flush = () => {
+    if (buf.trim()) {
+      chunks.push({
+        docId: doc.id,
+        library: doc.library,
+        title: doc.title,
+        ordinal: chunks.length,
+        text: `${doc.title}\n${doc.tags.join(" ")}\n${buf.trim()}`,
+      })
+      buf = ""
+    }
+  }
+  for (const p of paras) {
+    if (buf.length + p.length > LIMITS.chunkChars && buf) flush()
+    buf = buf ? `${buf}\n\n${p}` : p
+  }
+  flush()
+  if (chunks.length === 0) {
+    chunks.push({
+      docId: doc.id,
+      library: doc.library,
+      title: doc.title,
+      ordinal: 0,
+      text: `${doc.title}\n${doc.tags.join(" ")}`,
+    })
+  }
+  return chunks
 }
 
 export function loadDocs(dir: string): Doc[] {
   const docs: Doc[] = []
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith(".md") && !file.endsWith(".txt")) continue
-    const id = file.replace(/\.(md|txt)$/i, "")
-    docs.push(parseDoc(id, readFileSync(join(dir, file), "utf8")))
+  const readDir = (path: string, library: string) => {
+    for (const entry of readdirSync(path)) {
+      const full = join(path, entry)
+      if (statSync(full).isDirectory()) {
+        readDir(full, entry) // subfolder name = library
+        continue
+      }
+      if (!entry.endsWith(".md") && !entry.endsWith(".txt")) continue
+      const id = entry.replace(/\.(md|txt)$/i, "")
+      docs.push(parseDoc(id, library, readFileSync(full, "utf8")))
+    }
   }
+  readDir(dir, "default")
   return docs
 }
 
-function snippetFor(text: string, terms: string[]): string {
-  const lower = text.toLowerCase()
+export function buildChunks(docs: Doc[]): Chunk[] {
+  return docs.flatMap(chunkDoc)
+}
+
+// --- BM25 retrieval over chunks --------------------------------------------
+
+const K1 = 1.5
+const B = 0.75
+
+function snippetFor(text: string, terms: Set<string>): string {
+  const body = text.split("\n").slice(2).join("\n") || text
+  const lower = body.toLowerCase()
   let pos = -1
   for (const term of terms) {
     const i = lower.indexOf(term)
     if (i >= 0 && (pos === -1 || i < pos)) pos = i
   }
   const start = pos > 60 ? pos - 60 : 0
-  const raw = text.slice(start, start + LIMITS.maxSnippetChars).trim()
+  const raw = body.slice(start, start + LIMITS.maxSnippetChars).trim()
   return redact((start > 0 ? "…" : "") + raw)
 }
 
-// Term-frequency scoring over title (weighted) + body. Deterministic.
-export function search(docs: Doc[], query: string, limit: number): SearchHit[] {
+// Term match with prefix tolerance for inflected forms (укр. відмінки).
+function matches(token: string, term: string): boolean {
+  return (
+    token === term ||
+    (term.length >= 4 && (token.startsWith(term) || term.startsWith(token)))
+  )
+}
+
+export function search(
+  chunks: Chunk[],
+  query: string,
+  limit: number,
+  library?: string
+): SearchHit[] {
+  const scope = library ? chunks.filter((c) => c.library === library) : chunks
+  if (scope.length === 0) return []
+
   const terms = [...new Set(tokenize(query))]
   if (terms.length === 0) return []
 
-  const hits: SearchHit[] = []
-  for (const doc of docs) {
-    const titleTokens = tokenize(doc.title)
-    const bodyTokens = tokenize(`${doc.text} ${doc.tags.join(" ")}`)
-    // Prefix match handles inflection (укр. відмінки): "вентилятор" ~ "вентилятора".
-    const matches = (t: string, term: string) =>
-      t === term || (term.length >= 4 && (t.startsWith(term) || term.startsWith(t)))
-    let score = 0
-    for (const term of terms) {
-      score += titleTokens.filter((t) => matches(t, term)).length * 3
-      score += bodyTokens.filter((t) => matches(t, term)).length
+  const docTokens = scope.map((c) => tokenize(c.text))
+  const avgLen = docTokens.reduce((s, t) => s + t.length, 0) / scope.length
+
+  // Document frequency per term (prefix-aware).
+  const df = new Map<string, number>()
+  for (const term of terms) {
+    let n = 0
+    for (const toks of docTokens) {
+      if (toks.some((t) => matches(t, term))) n++
     }
-    if (score > 0) {
-      hits.push({
-        id: doc.id,
-        title: doc.title,
-        score,
-        snippet: snippetFor(doc.text, terms),
-      })
-    }
+    df.set(term, n)
   }
 
+  const N = scope.length
+  const hits: SearchHit[] = scope.map((chunk, i) => {
+    const toks = docTokens[i]
+    const len = toks.length || 1
+    let score = 0
+    for (const term of terms) {
+      const tf = toks.filter((t) => matches(t, term)).length
+      if (tf === 0) continue
+      const n = df.get(term) ?? 0
+      const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5))
+      score += idf * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * len) / avgLen)))
+    }
+    return {
+      docId: chunk.docId,
+      library: chunk.library,
+      title: chunk.title,
+      score,
+      snippet: snippetFor(chunk.text, new Set(terms)),
+    }
+  })
+
   return hits
-    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+    .filter((h) => h.score > 0)
+    .sort((a, b) => b.score - a.score || a.docId.localeCompare(b.docId))
     .slice(0, limit)
 }
 
-export function getById(docs: Doc[], id: string): Doc | null {
-  return docs.find((d) => d.id === id) ?? null
+export function getById(docs: Doc[], id: string, library?: string): Doc | null {
+  return (
+    docs.find((d) => d.id === id && (!library || d.library === library)) ?? null
+  )
+}
+
+export function listLibraries(docs: Doc[]): string[] {
+  return [...new Set(docs.map((d) => d.library))].sort()
 }

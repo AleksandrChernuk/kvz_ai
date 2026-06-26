@@ -10,6 +10,10 @@ export const LIMITS = {
   maxResults: 10,
   defaultResults: 5,
   maxSnippetChars: 400,
+  // Passage chunk size for retrieval (chars). Paragraphs pack up to this.
+  chunkChars: 700,
+  // Library id charset (matches knowledge_bases mcp_config.library).
+  maxLibraryLength: 64,
   // Token-bucket rate limit per connector process.
   rateCapacity: 30,
   rateRefillPerSec: 10,

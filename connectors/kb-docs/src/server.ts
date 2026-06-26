@@ -4,7 +4,7 @@ import { z } from "zod"
 
 import { CONNECTOR_KEY, connectorToken, dataDir, LIMITS } from "./config.js"
 import { KbDocsConnector, type CallContext } from "./connector.js"
-import { loadDocs } from "./store.js"
+import { listLibraries, loadDocs } from "./store.js"
 
 // Reference read-only KB connector runtime. The correctness-critical logic
 // (auth, schema, limits, search, redaction, audit) lives in tested modules;
@@ -23,9 +23,10 @@ const server = new McpServer({ name: `kvz-${CONNECTOR_KEY}`, version: "0.1.0" })
 
 server.tool(
   "kb_search",
-  "Пошук у внутрішній базі знань КВЗ. Повертає релевантні фрагменти документів.",
+  "Пошук у внутрішній базі знань КВЗ. library — ролева бібліотека (опц.). Повертає релевантні фрагменти.",
   {
     query: z.string().max(LIMITS.maxQueryLength),
+    library: z.string().optional(),
     limit: z.number().int().min(1).max(LIMITS.maxResults).optional(),
   },
   async (args) => {
@@ -36,8 +37,8 @@ server.tool(
 
 server.tool(
   "kb_fetch",
-  "Отримати повний документ бази знань за його id.",
-  { id: z.string() },
+  "Отримати повний документ бази знань за його id (опц. library).",
+  { id: z.string(), library: z.string().optional() },
   async (args) => {
     const res = connector.fetch(args, localCtx)
     return { content: [{ type: "text", text: JSON.stringify(res) }], isError: !res.ok }
@@ -58,6 +59,7 @@ server.resource(
           class: "read-only-kb",
           tools: ["kb_search", "kb_fetch"],
           document_count: docs.length,
+          libraries: listLibraries(docs),
           limits: LIMITS,
         }),
       },
