@@ -65,10 +65,17 @@ export function getFeaturesByGroup(group: FeatureGroup) {
   return FEATURE_CATALOG.filter((feature) => feature.group === group)
 }
 
+// Не маршрутизований агент: «orchestrated» — це маркер синтезу (мозок звів
+// кілька під-результатів), а не виконавець, яким керує матриця доступів. Тому
+// він не входить до AGENT_CATALOG (доступ не налаштовується), але є валідним
+// значенням agent у complete_task.
+export const RESULT_ONLY_AGENTS = ["orchestrated"] as const
+
 export function isManagedAgent(value: unknown): value is AgentType {
   return (
     typeof value === "string" &&
-    AGENT_CATALOG.some((agent) => agent.key === value)
+    (AGENT_CATALOG.some((agent) => agent.key === value) ||
+      (RESULT_ONLY_AGENTS as readonly string[]).includes(value))
   )
 }
 

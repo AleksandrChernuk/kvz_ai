@@ -21,6 +21,12 @@ describe("access catalog", () => {
     expect(isManagedAgent("kb")).toBe(true)
   })
 
+  it("accepts orchestrated as a result-only agent without exposing it to access UI", () => {
+    expect(isManagedAgent("orchestrated")).toBe(true)
+    expect(AGENT_CATALOG.map((agent) => agent.key)).not.toContain("orchestrated")
+    expect(isManagedAgent("nonsense")).toBe(false)
+  })
+
   it("builds a full role-feature matrix with false defaults", () => {
     const matrix = buildFeatureMatrix([
       { role: "admin", feature: "training", enabled: true },

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Стаб claude CLI для тестів оркестрації. Розрізняє роль за системним промптом:
+# планувальник / синтезатор / маршрутизатор. Завжди детермінований.
+set -euo pipefail
+args="$*"
+input=$(cat)
+
+if [[ "$args" == *планувальник* ]]; then
+  if [[ "$input" == *ціну* ]]; then
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"gemini","prompt":"відправ ціну клієнту","depends_on":["s1"]}]}'
+  elif [[ "$input" == *перевір* ]]; then
+    # крок s1 декларує validation, що НЕ проходить (value поза межами) → step failed
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[],"validation":{"kind":"weight","value":-1,"unit":"kg"}},{"id":"s2","executor":"gemini","prompt":"підбери обладнання","depends_on":["s1"]}]}'
+  elif [[ "$input" == *звір* ]]; then
+    # крок s1 декларує validation, що проходить → step ok
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[],"validation":{"kind":"weight","value":12.5,"unit":"kg"}},{"id":"s2","executor":"gemini","prompt":"підбери обладнання","depends_on":["s1"]}]}'
+  elif [[ "$input" == *" та "* ]]; then
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"gemini","prompt":"підбери обладнання","depends_on":["s1"]}]}'
+  else
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй","depends_on":[]}]}'
+  fi
+  jq -n --arg r "$plan" '{result:$r,is_error:false,usage:{input_tokens:1,output_tokens:1}}'
+elif [[ "$args" == *синтезатор* ]]; then
+  jq -n --arg r "СИНТЕЗ: зведена відповідь" '{result:$r,is_error:false,usage:{input_tokens:1,output_tokens:1}}'
+else
+  # Гілка маршрутизатора (route_single). Якщо тест задав ROUTER_HIT_FILE —
+  # фіксуємо виклик, щоб перевірити «простий шлях не робить 2-й LLM-виклик».
+  if [[ "$args" == *маршрутизатор* ]] && [ -n "${ROUTER_HIT_FILE:-}" ]; then
+    echo hit >> "$ROUTER_HIT_FILE"
+  fi
+  jq -n --arg r "codex" '{result:$r,is_error:false,usage:{input_tokens:1,output_tokens:1}}'
+fi

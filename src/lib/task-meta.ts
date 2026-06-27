@@ -28,6 +28,7 @@ export const AGENT_LABELS: Record<AgentType, string> = {
   bitrix: "Bitrix24",
   email: "Email",
   kb: "База знань",
+  orchestrated: "Оркестратор",
 }
 
 export function fmtTime(iso: string) {
