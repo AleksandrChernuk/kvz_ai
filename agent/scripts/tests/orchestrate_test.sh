@@ -105,6 +105,13 @@ out=$(run "порахуй вагу та підбери обладнання" 2>/
 echo "$out" | jq -e '.tokens | has("input") and has("output")' >/dev/null 2>&1 \
   && pass "tokens агреговано (не відсутні)" || die "tokens відсутні у результаті"
 
+# 9. Порадна згадка «лазер/верстат» (не дія) НЕ блокується гейтом незворотності.
+out=$(run "порадь обладнання для лазерного різання" 2>/dev/null)
+echo "$out" | jq -e '.requires_approval == false' >/dev/null 2>&1 \
+  && pass "порадна згадка 'лазер' не тригерить гейт" || die "хибне спрацювання гейту на пораду"
+echo "$out" | jq -e '[.raw_result.sub_results[].status] | all(. == "held") | not' >/dev/null 2>&1 \
+  && pass "кроки поради виконано (не held)" || die "порадні кроки помилково притримано"
+
 if [ "$fail" -ne 0 ]; then
   echo "orchestrate_test: ПРОВАЛЕНО" >&2
   exit 1
