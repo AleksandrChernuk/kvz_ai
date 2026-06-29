@@ -158,6 +158,8 @@ def _self_test() -> int:
         ({"kind": "selection", "model": "VR-400", "catalog": ["VR-400"],
           "spec": {"pressure": 1000}, "requirements": {"pressure": 1005}}, True),
         ({"kind": "selection", "model": "X", "catalog": ["VR-400"]}, False),
+        ({"kind": "selection", "model": "VR-400", "catalog": ["VR-400"],
+          "spec": {"pressure": 900}, "requirements": {"pressure": 1000}}, False),
         ({"kind": "ilogic", "code": "Parameter(\"D\") = 400"}, True),
         ({"kind": "ilogic", "code": "Shell(\"rm -rf\")"}, False),
         ({"kind": "dxf", "created": True, "size_bytes": 2048,

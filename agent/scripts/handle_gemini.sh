@@ -102,6 +102,7 @@ if [ "$GROUNDED" = "true" ]; then
   AGENT="kb"
 else
   STEPS=$(jq -c -n --arg m "$MODEL_USED" '["Оброблено виконавцем знань (" + $m + ")"]')
+  SOURCES='[]'
   AGENT="kb"
 fi
 
@@ -109,6 +110,7 @@ jq -n \
   --arg answer "$ANSWER" \
   --arg agent "$AGENT" \
   --argjson steps "$STEPS" \
+  --argjson sources "$SOURCES" \
   --argjson input "$IN_TOK" \
   --argjson output "$OUT_TOK" \
-  '{answer: $answer, agent_used: $agent, steps: $steps, tokens: {input: $input, output: $output}}'
+  '{answer: $answer, agent_used: $agent, steps: $steps, sources: $sources, tokens: {input: $input, output: $output}}'

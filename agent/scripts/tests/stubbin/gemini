@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Стаб gemini CLI: повертає детерміновану відповідь зі знань.
+set -euo pipefail
+cat >/dev/null
+printf 'GEMINI: підібрано з бази знань'

@@ -31,6 +31,10 @@ User → /api/chat → saves Message → creates Task (status: pending)
                                         ↓
                     saves checkpoint periodically (crash recovery)
                                         ↓
+                    routes/decomposes: 1 intent → one executor; composite →
+                    plan → parallel sub-tasks → synthesize (agent_used:"orchestrated";
+                    irreversible sub-steps held fail-closed → requires_approval)
+                                        ↓
                     dispatches to subagent (codex-agent/, search, etc.)
                                         ↓
                     POST /api/tasks/complete → writes Task.result + inserts Message (assistant)
@@ -154,7 +158,7 @@ Access levels are enforced in API routes. UI shows/hides controls based on `prof
 npm run lint && npx tsc --noEmit && npm test
 ```
 
-`npm test` = vitest unit tests (worker-auth, webhook SSRF guard, validators, title) + the Python token-gate self-test. Run `npm run build` before considering a change deploy-ready.
+`npm test` = vitest unit tests (worker-auth, webhook SSRF guard, validators, title, queue-migrations) + Python self-tests (token-gate + plan validator) + the bash orchestrate integration test (`agent/scripts/tests/orchestrate_test.sh`, stubbed LLMs). Run `npm run build` before considering a change deploy-ready.
 
 ## Memory system
 

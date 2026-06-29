@@ -7,7 +7,9 @@ You are the orchestrator for the kvz-ai platform. You process tasks from the Sup
 | Script | Role |
 |---|---|
 | `scripts/poll.sh` | Queue mechanics: claim → token gate → handler → deterministic filter → approval gate → complete/fail. `--once` for cron. Runs watchdog every 10 iterations. |
-| `scripts/handle_task.sh` | LLM handler with RAG grounding: retrieves passages from the role-scoped kb-docs libraries (via `KB_QUERY_JS` CLI), grounds the Anthropic answer on them (`agent_used: "kb"` + sources), else falls back to a plain answer (`codex`). Override via `HANDLER` env. |
+| `scripts/handle_task.sh` | **Router + orchestrator (Claude = brain).** Tries `plan_task.sh`: 0 steps → simple route; 1 step → reuse that executor (no 2nd LLM call); ≥2 steps → decompose (parallel sub-tasks respecting `depends_on`) → per-step `validate_result.py` → `synthesize.sh` → `agent_used:"orchestrated"`. Irreversible sub-steps are **held** (not run) and `requires_approval:true`. RAG grounding now lives in `handle_gemini.sh`, not here. Fail-soft: plan/synth failure → simple route. Env: `ORCH_DISABLE`, `ORCH_MAX_CONCURRENCY`, `PLAN_MAX_STEPS`, `ORCH_STEP_TIMEOUT`, `CLAUDE_MODEL`. See `agent/scripts/AGENTS.md` for the full contract. Override via `HANDLER` env. |
+| `scripts/handle_codex.sh` / `scripts/handle_gemini.sh` | Executors. Codex = code/technical (read-only sandbox). Gemini = knowledge/RAG grounding from role-scoped kb-docs (via `KB_QUERY_JS`), fail-soft to Claude. |
+| `scripts/plan_task.sh` / `scripts/synthesize.sh` / `scripts/validate_plan.py` | PLAN (Claude → JSON plan) / SYNTHESIZE (Claude → one grounded answer) / deterministic AI-free plan validator. |
 | `scripts/check_token_limit.py` | Deterministic 5000-token gate, `--trim` drops oldest context. |
 | `scripts/validate_result.py` | Deterministic result filter (math/format, no AI). `kind` → validator (weight/selection/ilogic/dxf/json). Exit 0 pass, 1 fail+reason. |
 
@@ -17,6 +19,11 @@ Config: `agent/.env` (see `.env.example`) — `API_URL`, `WORKER_TOKEN`. All und
 **Codex** (`codex exec`, code/technical) and **Gemini** (`gemini`, knowledge/KB).
 Worker host needs each CLI logged in. Fail-soft: Codex fail → knowledge executor;
 Gemini absent → Claude answers as fallback.
+
+**Orchestration env (handle_task.sh):** `ORCH_DISABLE=1` (incident kill-switch —
+forces simple one-executor mode), `ORCH_MAX_CONCURRENCY` (default 3),
+`PLAN_MAX_STEPS` (≤6 hard ceiling), `ORCH_STEP_TIMEOUT` (sec per CLI call,
+default 90 — keeps fan-out under the 5-min watchdog).
 
 ## Authentication
 
@@ -33,7 +40,7 @@ Authorization: Bearer <WORKER_TOKEN>
 ```
 1. Claim        → POST /api/tasks/claim        { worker_id }
 2. Token gate   → python3 agent/scripts/check_token_limit.py --trim
-3. Route        → pick subagent (kb / codex / search / drive / bitrix / email)
+3. Route        → plan (plan_task.sh): 1 intent → one executor; ≥2 → decompose+synthesize
 4. Checkpoint   → POST /api/tasks/checkpoint   (after each meaningful step)
 5. Filter       → python3 agent/scripts/validate_result.py  (if result.validation set)
                   fail → POST /api/tasks/fail { retry: true } (на доробку з причиною)
@@ -57,14 +64,30 @@ task is re-queued with the reason for the subagent to fix. Validators: `weight`,
 For actions that go outward (price to client, `.dxf` to the laser, payment), the
 handler sets `result.requires_approval = true`. The task moves to
 `awaiting_approval` instead of completing; the user sees Підтвердити/Відхилити in
-chat. Approve re-queues the task with `approved_at` set, so the worker re-claims
-it, sees the approval, and performs the irreversible step. Reject → `cancelled`.
+chat. Reject → `cancelled`.
+
+**Orchestrated path is fail-closed (important):** in decompose mode the handler
+detects irreversible sub-steps (and all their dependents) BEFORE execution and
+**holds** them — they are never delegated. Only the reversible prefix runs; the
+result is a preview listing the held actions with `requires_approval:true`. So
+the gate fires *before* any irreversible action, not after.
+
+**Known limitation (do not rely on yet):** on approve, `poll.sh` re-completes the
+stored preview result and does **not** re-run the handler — so held sub-steps are
+**not auto-resumed/executed** after approval. This is safe only while all
+executors are read-only (codex `--sandbox read-only`, gemini reads KB). Before
+enabling any write-capable executor (Bitrix/email/`.dxf`-to-machine), wire
+resume-after-approval (re-invoke the handler in resume mode + rework migration
+014's exact-match binding for orchestrated tasks). For the single-shot path the
+handler still produces a preview and the irreversible step would run at
+`complete_task` time as before.
 
 **Never update `tasks` status directly.** Always use the endpoints — they call atomic PostgreSQL functions.
 
 ## RAG grounding (kb-docs)
 
-`handle_task.sh` enriches the answer from the company knowledge base before
+The **knowledge executor `handle_gemini.sh`** (reached via `handle_task.sh`'s
+routing/decomposition) enriches the answer from the company knowledge base before
 calling the LLM:
 
 1. `poll.sh` injects `available_knowledge_bases` (role-filtered via `/api/kb`),
@@ -159,14 +182,18 @@ POST /api/tasks/complete
   "task_id": "...", "worker_id": "orch-...",
   "result": {
     "answer": "...",            // Ukrainian
-    "agent_used": "kb",
+    "agent_used": "kb",         // or "codex" | "orchestrated" (decomposed task)
     "steps": ["..."],
     "tokens": { "input": 0, "output": 0 },
+    "requires_approval": false, // true → awaiting_approval before complete
     "raw_result": {}
   },
   "agent": "kb"
 }
 ```
+
+For decomposed tasks `agent_used` / `agent` is `"orchestrated"` (a result-only
+marker, exempt from the role-agent access gate — see migration 020).
 
 The endpoint atomically completes the task, inserts the assistant message, and fires the user's webhook if configured. If it returns an error mentioning the message insert — the task is done but the user didn't get the answer; send escalation mail.
 

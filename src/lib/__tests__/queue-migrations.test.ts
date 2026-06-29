@@ -28,6 +28,14 @@ const kbProjectionSql = readFileSync(
   "utf8"
 ).replace(/\s+/g, " ")
 
+const completeResultOnlySql = readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase/migrations/020_complete_task_result_only_agent.sql"
+  ),
+  "utf8"
+).replace(/\s+/g, " ")
+
 describe("queue retry accounting migration", () => {
   it("requeues stale locks only when another attempt remains", () => {
     expect(retryAccountingSql).toContain("status = 'running'")
@@ -126,6 +134,45 @@ describe("access entities migration", () => {
     expect(accessEntitiesSql).toContain("create or replace function ops_smoke_check")
     expect(accessEntitiesSql).toContain("grant execute on function ops_smoke_check() to service_role")
     expect(accessEntitiesSql).toContain("release_stale_locks_available")
+  })
+})
+
+describe("complete_task result-only agent migration", () => {
+  it("exempts result-only agents (orchestrated) from the access gate", () => {
+    expect(completeResultOnlySql).toContain(
+      "v_result_only agent_type[] := array['orchestrated']::agent_type[]"
+    )
+    expect(completeResultOnlySql).toContain(
+      "if v_agent <> all (v_result_only) and not can_role_access_agent(v_role, v_agent) then"
+    )
+    expect(completeResultOnlySql).toContain("is not allowed for role")
+  })
+
+  it("preserves every complete_task invariant (no regression vs 016)", () => {
+    // 1. lock-ownership + 2. running-guard
+    expect(completeResultOnlySql).toContain(
+      "and locked_by = p_worker_id and status = 'running'"
+    )
+    expect(completeResultOnlySql).toContain(
+      "not owned by worker % or not in running state"
+    )
+    // 3. approval-gate + 4. approval-binding
+    expect(completeResultOnlySql).toContain("if v_task.approval_required then")
+    expect(completeResultOnlySql).toContain(
+      "if v_task.result is null or v_task.result <> p_result then"
+    )
+    // 5. agent required + 6. empty-answer
+    expect(completeResultOnlySql).toContain("Agent required to complete task")
+    expect(completeResultOnlySql).toContain("result.answer is empty for task")
+  })
+
+  it("stays service-role-only", () => {
+    expect(completeResultOnlySql).toContain(
+      "revoke execute on function complete_task(uuid, text, jsonb, agent_type) from public, anon, authenticated"
+    )
+    expect(completeResultOnlySql).toContain(
+      "grant execute on function complete_task(uuid, text, jsonb, agent_type) to service_role"
+    )
   })
 })
 

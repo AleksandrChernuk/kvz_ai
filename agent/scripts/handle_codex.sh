@@ -27,8 +27,9 @@ MODEL_ARG=()
 [ -n "${CODEX_MODEL:-}" ] && MODEL_ARG=(-m "$CODEX_MODEL")
 
 # --sandbox read-only: модель не виконує команд; -o кладе фінальну відповідь у файл.
+# Безпечне розгортання порожнього масиву під set -u (bash 3.2 на macOS).
 set +e
-codex exec "$PROMPT" "${MODEL_ARG[@]}" --sandbox read-only -o "$OUT" \
+codex exec "$PROMPT" ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} --sandbox read-only -o "$OUT" \
   >>/tmp/kvz-codex.log 2>&1
 RC=$?
 set -e

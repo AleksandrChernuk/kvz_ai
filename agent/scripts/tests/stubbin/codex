@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Стаб codex CLI: пише детерміновану відповідь у файл, заданий через -o.
+set -euo pipefail
+out=""; prev=""
+for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
+[ -n "$out" ] && printf 'CODEX: розрахунок виконано' > "$out"
+exit 0

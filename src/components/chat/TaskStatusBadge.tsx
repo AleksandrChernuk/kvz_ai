@@ -13,15 +13,7 @@ import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import type { AgentType, Task, TaskStatus } from "@/types/database"
 import { cn } from "@/lib/utils"
-
-const AGENT_LABELS: Record<AgentType, string> = {
-  codex: "Codex",
-  search: "Пошук",
-  drive: "Google Drive",
-  bitrix: "Bitrix24",
-  email: "Email",
-  kb: "База знань",
-}
+import { AGENT_LABELS } from "@/lib/task-meta"
 
 type State = {
   status: TaskStatus

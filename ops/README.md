@@ -176,3 +176,17 @@ sudo systemctl restart kvz-ai-web kvz-ai-worker kvz-ai-watchdog.timer
 ```
 
 Keep the newest two or three releases and delete old ones when disk space matters.
+
+## Incident: disable task decomposition (orchestration kill-switch)
+
+If decomposition misbehaves (runaway fan-out / LLM spend, bad plans), fall back to
+the simple one-executor path without a redeploy:
+
+```bash
+echo 'ORCH_DISABLE=1' | sudo tee -a /opt/kvz-ai/shared/env/worker.env
+sudo systemctl restart kvz-ai-worker
+```
+
+Tasks still process — they just route to a single executor (no plan/synthesize).
+Remove the line and restart to re-enable. Related knobs in `worker.env`:
+`ORCH_MAX_CONCURRENCY`, `PLAN_MAX_STEPS`, `ORCH_STEP_TIMEOUT`.

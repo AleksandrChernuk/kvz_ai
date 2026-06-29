@@ -31,7 +31,12 @@ jobs:
         run: npm ci
 
       - name: Check shell scripts
-        run: bash -n agent/scripts/poll.sh agent/scripts/handle_task.sh agent/scripts/handle_codex.sh agent/scripts/handle_gemini.sh ops/deploy/deploy-release.sh scripts/db-test/run.sh
+        run: bash -n agent/scripts/poll.sh agent/scripts/handle_task.sh agent/scripts/handle_codex.sh agent/scripts/handle_gemini.sh agent/scripts/plan_task.sh agent/scripts/synthesize.sh agent/scripts/tests/orchestrate_test.sh ops/deploy/deploy-release.sh ops/deploy/smoke-check.sh ops/supabase/apply-migrations.sh scripts/db-test/run.sh
+
+      - name: Ensure test deps (jq, python3)
+        run: |
+          command -v jq >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y jq; }
+          command -v python3 >/dev/null 2>&1 || { echo "python3 missing on runner" >&2; exit 1; }
 
       - name: Lint
         run: npm run lint

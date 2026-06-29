@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run && python3 agent/scripts/check_token_limit.py --self-test"
+    "test": "vitest run && python3 agent/scripts/check_token_limit.py --self-test && python3 agent/scripts/validate_plan.py --self-test && bash agent/scripts/tests/orchestrate_test.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

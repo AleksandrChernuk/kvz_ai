@@ -7,7 +7,14 @@ export type TaskStatus =
   | "done"
   | "failed"
   | "cancelled"
-export type AgentType = "codex" | "search" | "drive" | "bitrix" | "email" | "kb"
+export type AgentType =
+  | "codex"
+  | "search"
+  | "drive"
+  | "bitrix"
+  | "email"
+  | "kb"
+  | "orchestrated"
 export type MessageRole = "user" | "assistant" | "system"
 export type AgentState =
   | "booting"
