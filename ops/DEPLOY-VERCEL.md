@@ -50,7 +50,10 @@ Also run the watchdog on a schedule (else stale tasks never fail):
 
 1. [supabase.com](https://supabase.com) → New project. Copy from **Settings → API**:
    `Project URL`, `anon public`, `service_role`.
-2. **SQL Editor** → run every `supabase/migrations/*.sql` **in order 001→018**.
+2. **SQL Editor** → run every `supabase/migrations/*.sql` **in numeric order**
+   (001 → highest; currently **020**). 019–020 add the `orchestrated` agent value
+   and exempt it from the access gate — without them decomposed tasks fail at
+   completion.
 3. **Authentication → Add user** → then in SQL Editor:
    `update profiles set role='admin' where user_id=(select id from auth.users where email='you@example.com');`
 4. Realtime is on by default; the migrations add `messages`/`tasks` to the

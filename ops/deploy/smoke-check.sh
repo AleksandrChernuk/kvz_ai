@@ -100,6 +100,29 @@ check_systemd_active kvz-ai-web.service
 check_systemd_active kvz-ai-worker.service
 check_systemd_active kvz-ai-watchdog.timer
 
+# Субскрипшн-CLI: мозок (claude) обовʼязковий і має бути залогінений, інакше
+# планувальник/синтез тихо fail-soft-ять і декомпозиція мовчки зникає. codex/
+# gemini — лише попередження (можуть бути ще не підключені).
+info "checking subscription CLIs (claude=brain, codex/gemini=executors)"
+if command -v claude >/dev/null 2>&1; then
+  pass "claude present"
+  probe="$(printf 'ping' | timeout 30 claude -p --output-format json --allowed-tools '' 2>/dev/null || true)"
+  if echo "$probe" | jq -e '.is_error != true and (.result | type == "string")' >/dev/null 2>&1; then
+    pass "claude authenticated (subscription)"
+  else
+    fail "claude not authenticated — run 'claude login' on the worker host (decomposition/synthesis will silently degrade)"
+  fi
+else
+  fail "missing command: claude (the router/planner brain)"
+fi
+for cli in codex gemini; do
+  if command -v "$cli" >/dev/null 2>&1; then
+    pass "$cli present"
+  else
+    info "warn: $cli not installed — executor falls back (codex→knowledge, gemini→claude)"
+  fi
+done
+
 info "checking worker HTTP endpoints at $API_URL"
 ops_smoke="$(http_json GET /api/ops/smoke || true)"
 if echo "$ops_smoke" | jq -e '.ok == true' >/dev/null 2>&1; then

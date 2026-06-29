@@ -16,14 +16,20 @@
 set -euo pipefail
 
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
+STEP_TIMEOUT="${ORCH_STEP_TIMEOUT:-90}"
+
+with_timeout() { # $1=сек, далі команда (no-op, якщо timeout відсутній)
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout -k 5 "$secs" "$@"; else "$@"; fi
+}
 
 INPUT=$(cat)
-USER_MESSAGE=$(echo "$INPUT" | jq -r '.user_message // ""')
+USER_MESSAGE=$(printf '%s' "$INPUT" | jq -r '.user_message // ""')
 [ -n "$USER_MESSAGE" ] || exit 1
 command -v claude >/dev/null || exit 1
 
 # Складаємо контекст із під-результатів (id, виконавець, статус, відповідь, джерела).
-SUBCTX=$(echo "$INPUT" | jq -r '
+SUBCTX=$(printf '%s' "$INPUT" | jq -r '
   (.sub_results // [])[]
   | "### Крок \(.id) (\(.executor), \(.status))\n"
     + (.answer // "(немає відповіді)")
@@ -43,7 +49,7 @@ $SUBCTX"
 
 RESP_FILE=$(mktemp); trap 'rm -f "$RESP_FILE"' EXIT
 set +e
-printf '%s' "$PROMPT" | claude -p \
+printf '%s' "$PROMPT" | with_timeout "$STEP_TIMEOUT" claude -p \
   --model "$CLAUDE_MODEL" \
   --append-system-prompt "$SYNTH_SYS" \
   --output-format json \

@@ -69,6 +69,9 @@ export function getFeaturesByGroup(group: FeatureGroup) {
 // кілька під-результатів), а не виконавець, яким керує матриця доступів. Тому
 // він не входить до AGENT_CATALOG (доступ не налаштовується), але є валідним
 // значенням agent у complete_task.
+// ⚠️ Дзеркало в SQL: complete_task (міграція 020) тримає той самий список
+// result-only агентів (`array['orchestrated']`). Додаючи новий маркер — онови
+// ОБИДВА місця, інакше DB-гейт доступу відхилить завершення задачі.
 export const RESULT_ONLY_AGENTS = ["orchestrated"] as const
 
 export function isManagedAgent(value: unknown): value is AgentType {

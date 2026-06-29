@@ -14,16 +14,17 @@ steps, each gated on a real trigger so we don't build them early.
 
 ## To do (priority / trigger order)
 
-### 1. Task decomposition + synthesis in the router — HIGH (vision-driven)
-Today the router picks exactly **one** executor per task. Best practice: the
-router decomposes a query into sub-tasks, invokes zero-or-more executors (in
-parallel), then **synthesizes** the results.
+### 1. Task decomposition + synthesis in the router — ✅ DONE (commit 53f6d8a)
+Shipped: `plan_task.sh` (Claude plans) → parallel sub-tasks respecting
+`depends_on` → per-step `validate_result.py` → `synthesize.sh` →
+`agent_used:"orchestrated"`. Opt-in (≥2 steps); 1-step plans reuse the executor.
+Deterministic filter + approval gate apply **per sub-result**; irreversible
+sub-steps are held fail-closed before execution. See `agent/scripts/AGENTS.md`.
 
-- **Trigger:** the first composite engineering task — e.g. one request =
-  "порахуй + підбери обладнання + згенеруй .dxf". The PM's vision needs this.
-- **How:** Claude (brain) splits the task into steps → executors run (Codex /
-  Gemini / future MCP connectors) → Claude assembles the final answer. Keep the
-  deterministic filter + approval gate **per sub-result**, not just at the end.
+- **Follow-up (before any write-capable executor):** resume-after-approval — held
+  irreversible sub-steps are currently held but NOT auto-executed after approval
+  (`poll.sh` re-completes the stored preview without re-running the handler).
+  Required before wiring a Bitrix/email/`.dxf` write executor. Tracked separately.
 
 ### 2. Richer handoffs between agents — MEDIUM
 Currently only fail-soft fallback (codex → gemini → claude). Best practice:

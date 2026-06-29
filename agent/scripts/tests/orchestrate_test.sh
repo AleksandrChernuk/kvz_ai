@@ -21,6 +21,12 @@ run() { # $1 = user_message
     | "$SCRIPTS_DIR/handle_task.sh"
 }
 
+run_agents() { # $1 = user_message, $2 = available_agents JSON
+  jq -n --arg m "$1" --argjson a "$2" \
+    '{user_message:$m, user_role:"engineer", available_agents:$a, available_knowledge_bases:[]}' \
+    | "$SCRIPTS_DIR/handle_task.sh"
+}
+
 # 1. Проста задача (план з 1 кроку) → одно-виконавчий шлях, без оркестрації.
 out=$(run "порахуй вагу" 2>/dev/null)
 agent=$(echo "$out" | jq -r '.agent_used')
@@ -80,6 +86,24 @@ RH2=$(mktemp)
 ROUTER_HIT_FILE="$RH2" ORCH_DISABLE=1 run "порахуй вагу" >/dev/null 2>&1
 [ -s "$RH2" ] && pass "ORCH_DISABLE → роутер працює (контроль)" || die "контроль: роутер не спрацював"
 rm -f "$RH" "$RH2"
+
+# 6. Ре-гейт токенів на під-payload: крихітний ліміт валить кроки (інʼєкція
+#    контексту залежностей не має пробивати ліміт; poll гейтить лише оригінал).
+out=$(TOKEN_LIMIT=1 run "порахуй вагу та підбери обладнання" 2>/dev/null)
+echo "$out" | jq -e '.raw_result.sub_results[] | select(.id=="s1") | .status == "failed"' >/dev/null 2>&1 \
+  && pass "ре-гейт токенів валить завеликий під-крок" || die "під-payload не ре-гейтиться"
+
+# 7. nofallback: перевірений крок (validation.kind) з НЕДОСТУПНИМ codex НЕ
+#    підміняється виконавцем знань — крок падає (математику не віддаємо в KB).
+#    «звір» = validation, що ПРОЙШЛА б; якби був fallback на gemini, s1 став би ok.
+out=$(run_agents "звір вагу та підбери обладнання" '[]' 2>/dev/null)
+echo "$out" | jq -e '.raw_result.sub_results[] | select(.id=="s1") | .status == "failed"' >/dev/null 2>&1 \
+  && pass "nofallback: перевірений крок не підмінено на KB" || die "kind-крок підмінено виконавцем знань"
+
+# 8. Агрегація токенів: orchestrated не звітує хардкод {0,0}, а суму виконавців.
+out=$(run "порахуй вагу та підбери обладнання" 2>/dev/null)
+echo "$out" | jq -e '.tokens | has("input") and has("output")' >/dev/null 2>&1 \
+  && pass "tokens агреговано (не відсутні)" || die "tokens відсутні у результаті"
 
 if [ "$fail" -ne 0 ]; then
   echo "orchestrate_test: ПРОВАЛЕНО" >&2

@@ -52,3 +52,6 @@ next-env.d.ts
 
 # locally installed reference/tool workspaces
 /.codex/tools/
+
+# review session archives
+.full-review-archive-*/

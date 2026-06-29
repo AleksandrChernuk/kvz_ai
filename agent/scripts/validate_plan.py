@@ -37,7 +37,12 @@ Exit codes:
 import argparse
 import json
 import os
+import re
 import sys
+
+# id кроку: лише [A-Za-z0-9_] — бо воркер веде членство через рядкові переліки
+# (`case "$done_ids" in *" $id "*`); пробіл/спецсимвол в id зламав би облік.
+_ID_RE = re.compile(r"^[A-Za-z0-9_]{1,32}$")
 
 PLAN_VALIDATOR_VERSION = 1
 
@@ -87,6 +92,8 @@ def validate_plan(plan: dict) -> dict:
         sid = s.get("id")
         if not isinstance(sid, str) or not sid.strip():
             return _fail(f"крок #{i}: відсутній id")
+        if not _ID_RE.match(sid):
+            return _fail(f"крок #{i}: id має бути [A-Za-z0-9_], ≤32 символи")
         if sid in ids:
             return _fail(f"повторюваний id: {sid}")
         ids.add(sid)
@@ -147,6 +154,20 @@ def _self_test() -> int:
             {"id": f"s{i}", "executor": "codex", "prompt": "x", "depends_on": []}
             for i in range(MAX_STEPS + 1)
         ]}, False),
+        # depends_on містить не-рядок
+        ({"steps": [{"id": "s1", "executor": "codex", "prompt": "x", "depends_on": [1]}]}, False),
+        # id лише з пробілів (strip → порожній)
+        ({"steps": [{"id": "   ", "executor": "codex", "prompt": "x", "depends_on": []}]}, False),
+        # id з пробілом усередині (зламав би членство в done_ids)
+        ({"steps": [{"id": "s 1", "executor": "codex", "prompt": "x", "depends_on": []}]}, False),
+        # 3-вузловий цикл (Kahn має зловити, не лише 2-цикл)
+        ({"steps": [
+            {"id": "s1", "executor": "codex", "prompt": "x", "depends_on": ["s3"]},
+            {"id": "s2", "executor": "codex", "prompt": "y", "depends_on": ["s1"]},
+            {"id": "s3", "executor": "codex", "prompt": "z", "depends_on": ["s2"]},
+        ]}, False),
+        # depends_on не список
+        ({"steps": [{"id": "s1", "executor": "codex", "prompt": "x", "depends_on": "s2"}]}, False),
     ]
     failed = 0
     for inp, expect_ok in cases:

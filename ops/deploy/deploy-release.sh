@@ -130,6 +130,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable kvz-ai-web
 sudo systemctl enable kvz-ai-worker
 sudo systemctl enable kvz-ai-watchdog.timer
+# DB-міграції ДО рестарту воркера (ідемпотентні; tracking у schema_migrations).
+# Інакше новий код міг би стартувати без 019/020 і orchestrated-задачі падали б
+# на завершенні. Пропускаємо, якщо self-hosted Supabase не на цьому хості.
+if [ -x /opt/kvz-ai/current/ops/supabase/apply-migrations.sh ] && [ -d /opt/supabase/kvz-ai ]; then
+  sudo /opt/kvz-ai/current/ops/supabase/apply-migrations.sh
+fi
 sudo systemctl restart kvz-ai-web
 sudo systemctl restart kvz-ai-worker
 sudo systemctl restart kvz-ai-watchdog.timer

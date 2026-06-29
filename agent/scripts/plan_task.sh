@@ -18,9 +18,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
 PLAN_MAX_STEPS="${PLAN_MAX_STEPS:-6}"
+STEP_TIMEOUT="${ORCH_STEP_TIMEOUT:-90}"
+
+with_timeout() { # $1=сек, далі команда (no-op, якщо timeout відсутній)
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout -k 5 "$secs" "$@"; else "$@"; fi
+}
 
 PAYLOAD=$(cat)
-USER_MESSAGE=$(echo "$PAYLOAD" | jq -r '.user_message // ""')
+USER_MESSAGE=$(printf '%s' "$PAYLOAD" | jq -r '.user_message // ""')
 
 [ -n "$USER_MESSAGE" ] || exit 1
 command -v claude >/dev/null || exit 1
@@ -40,19 +46,25 @@ PLAN_SYS="Ти — планувальник задач інженерної си
 Нічого, окрім JSON, не виводь."
 
 set +e
-RJSON=$(printf '%s' "$USER_MESSAGE" | claude -p \
+RJSON=$(printf '%s' "$USER_MESSAGE" | with_timeout "$STEP_TIMEOUT" claude -p \
   --model "$CLAUDE_MODEL" --append-system-prompt "$PLAN_SYS" \
   --output-format json --allowed-tools "" 2>>/tmp/kvz-planner.log)
 set -e
+
+# Помилка CLI (is_error) → fail-soft на простий шлях (симетрично synthesize.sh).
+[ "$(printf '%s' "$RJSON" | jq -r '.is_error // false' 2>/dev/null)" != "true" ] || exit 1
 
 # Витягуємо текст відповіді й вичищаємо можливі ```json-огорожі.
 PLAN=$(printf '%s' "$RJSON" | jq -r '.result // empty' 2>/dev/null \
   | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//')
 [ -n "$PLAN" ] || exit 1
 
-# Лишаємо тільки JSON-обʼєкт (від першої { до останньої }).
-PLAN=$(printf '%s' "$PLAN" | tr -d '\000' | sed -n '/{/,/}/p')
-PLAN=$(printf '%s' "$PLAN" | jq -c '{steps: (.steps // [])}' 2>/dev/null) || exit 1
+# Парсимо JSON напряму через jq (без line-slicing: попередній `sed '/{/,/}/p'`
+# обрізав багаторядковий план на першому `}` і ламав валідні плани). Не-обʼєкт
+# або не-JSON → fail-soft на простий шлях.
+PLAN=$(printf '%s' "$PLAN" | tr -d '\000' \
+  | jq -c 'if type=="object" then {steps:(.steps // [])} else empty end' 2>/dev/null) || exit 1
+[ -n "$PLAN" ] || exit 1
 
 # Детермінована перевірка структури плану (БЕЗ ШІ). Невалідний → fail-soft.
 set +e

@@ -15,20 +15,35 @@
 # Env: CLAUDE_MODEL (роутер/планувальник/синтез, default opus),
 #      ORCH_MAX_CONCURRENCY (паралелізм під-задач, default 3),
 #      ORCH_DISABLE=1 (вимкнути декомпозицію — лише простий режим),
+#      ORCH_STEP_TIMEOUT (сек на один CLI-виклик, default 90),
 #      HANDLER override через poll.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
 MAX_CONC="${ORCH_MAX_CONCURRENCY:-3}"
+STEP_TIMEOUT="${ORCH_STEP_TIMEOUT:-90}"
+
+# Обмеження на один виклик CLI: декомпозована задача робить до ~8 послідовних
+# викликів; без таймауту завислий CLI тримав би лок до watchdog (5 хв) → ризик
+# подвійного захоплення задачі. Якщо `timeout` відсутній (напр. macOS без
+# coreutils) — викликаємо без обмеження (на проді/Linux воно є).
+with_timeout() { # $1=сек, далі команда
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout -k 5 "$secs" "$@"
+  else
+    "$@"
+  fi
+}
 
 PAYLOAD=$(cat)
-USER_MESSAGE=$(echo "$PAYLOAD" | jq -r '.user_message // ""')
-AVAILABLE_AGENTS=$(echo "$PAYLOAD" | jq -c '.available_agents // []')
+USER_MESSAGE=$(printf '%s' "$PAYLOAD" | jq -r '.user_message // ""')
+AVAILABLE_AGENTS=$(printf '%s' "$PAYLOAD" | jq -c '.available_agents // []')
 
 # Доступ ролі до виконавця codex; інакше технічні кроки йдуть на виконавця знань.
 codex_allowed() {
-  echo "$AVAILABLE_AGENTS" | jq -e '.[] | select(.key == "codex")' >/dev/null 2>&1
+  printf '%s' "$AVAILABLE_AGENTS" | jq -e '.[] | select(.key == "codex")' >/dev/null 2>&1
 }
 
 # Делегування одного payload потрібному виконавцю.
@@ -40,7 +55,7 @@ delegate() { # stdin: payload   stdout: TaskResult
   pl=$(cat)
   if [ "$exec" = "codex" ]; then
     if codex_allowed && command -v codex >/dev/null \
-       && out=$(printf '%s' "$pl" | "$SCRIPT_DIR/handle_codex.sh" 2>>/tmp/kvz-codex.log); then
+       && out=$(printf '%s' "$pl" | with_timeout "$STEP_TIMEOUT" "$SCRIPT_DIR/handle_codex.sh" 2>>/tmp/kvz-codex.log); then
       printf '%s' "$out"; return 0
     fi
     if [ "$nofb" = "nofallback" ]; then
@@ -49,7 +64,7 @@ delegate() { # stdin: payload   stdout: TaskResult
     fi
     echo "codex виконавець впав — делегуємо виконавцю знань" >&2
   fi
-  printf '%s' "$pl" | "$SCRIPT_DIR/handle_gemini.sh"
+  printf '%s' "$pl" | with_timeout "$STEP_TIMEOUT" "$SCRIPT_DIR/handle_gemini.sh"
 }
 
 # --- ПРОСТИЙ режим: класифікація одним словом + одно-виконавчий шлях ----------
@@ -61,7 +76,7 @@ route_single() {
 codex — якщо це код, скрипт, розрахунок, генерація файлів, технічна робота; \
 gemini — якщо це знання, довідка, питання, спілкування."
     set +e
-    rjson=$(printf '%s' "$USER_MESSAGE" | claude -p \
+    rjson=$(printf '%s' "$USER_MESSAGE" | with_timeout "$STEP_TIMEOUT" claude -p \
       --model "$CLAUDE_MODEL" --append-system-prompt "$rsys" \
       --output-format json --allowed-tools "" 2>>/tmp/kvz-router.log)
     set -e
@@ -143,14 +158,17 @@ WORKDIR=$(mktemp -d); trap 'rm -rf "$WORKDIR"' EXIT
 # делегуємо виконавцю, проганяємо детермінований фільтр (якщо крок його декларує),
 # результат пишемо у $WORKDIR/<id>.json як {id,executor,status,answer,sources}.
 # Записати під-результат кроку у $WORKDIR/<id>.json (єдина точка запису).
-write_step() { # $1=id $2=executor $3=status $4=answer $5=sources_json
+write_step() { # $1=id $2=executor $3=status $4=answer $5=sources_json [$6=tokens_json]
+  local tok='{"input":0,"output":0}'
+  [ -n "${6:-}" ] && tok="$6"
   jq -n --arg id "$1" --arg ex "$2" --arg st "$3" --arg a "$4" --argjson src "$5" \
-    '{id: $id, executor: $ex, status: $st, answer: $a, sources: $src}' \
+    --argjson tok "$tok" \
+    '{id: $id, executor: $ex, status: $st, answer: $a, sources: $src, tokens: $tok}' \
     > "$WORKDIR/$1.json"
 }
 
 _run_step_impl() { # $1 = step id
-  local id="$1" step exec prompt deps depctx subpayload result answer sources actual
+  local id="$1" step exec prompt deps depctx subpayload result answer sources actual tokens
   local valobj verdict vrc reason retrymsg retrypayload haskind nofb dep_failed da dst trc rc
   step=$(printf '%s' "$PLAN" | jq -c --arg id "$id" '.steps[] | select(.id == $id)')
   exec=$(printf '%s' "$step" | jq -r '.executor')
@@ -222,6 +240,9 @@ _run_step_impl() { # $1 = step id
       kb|gemini) actual="gemini" ;;
       *) actual="$exec" ;;
     esac
+    # Токени виконавця (для агрегації; нуль, якщо CLI не повернув usage).
+    tokens=$(printf '%s' "$result" | jq -c '.tokens // {input:0,output:0}' 2>/dev/null || echo '{"input":0,"output":0}')
+    [ -n "$tokens" ] && [ "$tokens" != "null" ] || tokens='{"input":0,"output":0}'
     # Джерела: спершу структуроване поле .sources виконавця; інакше — скрейп steps.
     sources=$(printf '%s' "$result" | jq -c '.sources // empty' 2>/dev/null || echo '')
     if [ -z "$sources" ] || [ "$sources" = "null" ]; then
@@ -234,6 +255,12 @@ _run_step_impl() { # $1 = step id
     # Детермінований фільтр на під-результат (значення виконавця + очікування
     # кроку). Запускається лише якщо є kind — інакше перевіряти нема чого.
     valobj=$(printf '%s' "$result" | merged_validation "$step")
+    # Fail-closed: крок декларує перевірку (haskind), але об'єкт не зібрався
+    # (зіпсований результат / помилка jq) → не пропускаємо гейт, валимо крок.
+    if [ -z "$valobj" ] && [ -n "$haskind" ]; then
+      write_step "$id" "$actual" "failed" "" "$sources"
+      return 0
+    fi
     if [ -n "$valobj" ]; then
       set +e
       verdict=$(printf '%s' "$valobj" | python3 "$SCRIPT_DIR/validate_result.py" 2>/dev/null)
@@ -267,7 +294,7 @@ _run_step_impl() { # $1 = step id
     fi
   fi
 
-  write_step "$id" "$actual" "$status" "$answer" "$sources"
+  write_step "$id" "$actual" "$status" "$answer" "$sources" "$tokens"
 }
 
 # Обгортка: гарантує файл-результат навіть якщо _run_step_impl аварійно вийшов
@@ -291,6 +318,9 @@ ALL_IDS=$(printf '%s' "$PLAN" | jq -r '.steps[].id')
 # УСІ його залежні нащадки НЕ виконуються в цьому проході. Спершу — людське
 # підтвердження. Так гарантія "жодної незворотної дії на LLM-only рішенні"
 # виконується реально, а не лише декларується прапорцем після факту.
+# ІНВАРІАНТ: HELD_IDS — рядок із пробілами-роздільниками (" s2 s3 "); членство
+# перевіряємо через `case "$HELD_IDS" in *" $id "*`. НЕ прибирай початковий
+# пробіл і пробіли навколо id — інакше зламається межа слова (s1 vs s10).
 HELD_IDS=" "
 while IFS= read -r id; do
   [ -z "$id" ] && continue
@@ -387,7 +417,9 @@ done <<< "$ALL_IDS"
 
 # --- SYNTHESIZE: зводимо в одну відповідь лише ВИКОНАНІ кроки ------------------
 # Притримані (held) кроки не мають відповіді — їх не подаємо в синтез, а
-# перелічуємо окремо як «очікують підтвердження».
+# перелічуємо окремо як «очікують підтвердження». УВАГА: failed-кроки (на відміну
+# від held) свідомо ЛИШАЮТЬСЯ у вході синтезу — синтезатор має чесно зазначити
+# провал, а не приховати його.
 SYN_RESULTS=$(printf '%s' "$SUB_RESULTS" | jq -c '[.[] | select(.status != "held")]')
 SYN_INPUT=$(jq -c -n --arg m "$USER_MESSAGE" --argjson sr "$SYN_RESULTS" \
   '{user_message: $m, sub_results: $sr}')
@@ -416,17 +448,24 @@ STEPS=$(jq -c -n --argjson sr "$SUB_RESULTS" --argjson n "$STEP_COUNT" '
   ["План: декомпозиція на \($n) кроків"]
   + [$sr[] | "Крок \(.id) (\(.executor)): \(.status)"]')
 
+# Агрегуємо токени виконавців під-кроків (план/синтез не рахуються — їхній CLI
+# не повертає usage через stdout-контракт). Краще за хардкод {0,0}.
+TOKENS=$(printf '%s' "$SUB_RESULTS" | jq -c '
+  {input: ([.[].tokens.input // 0] | add // 0),
+   output: ([.[].tokens.output // 0] | add // 0)}')
+
 jq -n \
   --arg answer "$FINAL_ANSWER" \
   --argjson steps "$STEPS" \
   --argjson plan "$PLAN" \
   --argjson sub "$SUB_RESULTS" \
   --argjson approval "$REQUIRES_APPROVAL" \
+  --argjson tokens "$TOKENS" \
   '{
      answer: $answer,
      agent_used: "orchestrated",
      steps: $steps,
-     tokens: {input: 0, output: 0},
+     tokens: $tokens,
      requires_approval: $approval,
      raw_result: {plan: $plan, sub_results: $sub}
    }'

@@ -1,3 +1,15 @@
+> **STATUS: implemented** (commit 53f6d8a). Live contract: `agent/scripts/AGENTS.md`.
+> As-built deviations from this brief:
+> - **Approval is fail-closed-hold, not run-after-approval.** Irreversible sub-steps
+>   (+ dependents) are held and never executed; they are NOT auto-resumed after
+>   approval yet (follow-up). §4 below describes the intended end-state.
+> - **New enum value** `agent_type='orchestrated'` (migrations 019 + 020) — the brief
+>   predicted "no DB contract change"; the access gate required an exemption (020).
+> - **Validation merge:** the per-step filter merges the planner's `step.validation`
+>   with the executor's `result.validation` (executor wins), runs only when `kind` is
+>   present, fails closed on a malformed merge, and bars codex→gemini cross-fallback
+>   for validated steps.
+
 # Implementation brief: task decomposition + synthesis in the router
 
 **Goal (best practice):** evolve the router from "one task → one executor" to
