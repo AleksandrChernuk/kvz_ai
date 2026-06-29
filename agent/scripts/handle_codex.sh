@@ -101,7 +101,7 @@ if [ "$PREFERRED_KB_ID" = "notebooklm-selection" ] \
   || [ "$(echo "${PREFERRED_KB:-{}}" | jq -r '.mcp_server // empty' 2>/dev/null || true)" = "notebooklm-selection" ]; then
   MCP_ARG=(
     -c 'mcp_servers.notebooklm-selection.command="npx"'
-    -c "mcp_servers.notebooklm-selection.args=[\"-y\",\"$NOTEBOOKLM_MCP_PACKAGE\",\"start\"]"
+    -c "mcp_servers.notebooklm-selection.args=[\"-y\",\"$NOTEBOOKLM_MCP_PACKAGE\",\"server\"]"
     -c 'mcp_servers.notebooklm-selection.startup_timeout_sec=120'
   )
 fi

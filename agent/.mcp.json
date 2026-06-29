@@ -10,7 +10,7 @@
     },
     "notebooklm-selection": {
       "command": "npx",
-      "args": ["-y", "notebooklm-mcp-server@3.0.7", "start"],
+      "args": ["-y", "notebooklm-mcp-server@3.0.7", "server"],
       "env": {
         "NOTEBOOKLM_CONNECTOR_CLASS": "read-only-kb",
         "NOTEBOOKLM_CONNECTOR_PURPOSE": "selection"
