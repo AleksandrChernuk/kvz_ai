@@ -7,18 +7,16 @@ You are the orchestrator for the kvz-ai platform. You process tasks from the Sup
 | Script | Role |
 |---|---|
 | `scripts/poll.sh` | Queue mechanics: claim → token gate → handler → deterministic filter → approval gate → complete/fail. `--once` for cron. Runs watchdog every 10 iterations. |
-| `scripts/handle_task.sh` | **Router + orchestrator (Claude = brain).** Tries `plan_task.sh`: 0 steps → simple route; 1 step → reuse that executor (no 2nd LLM call); ≥2 steps → decompose (parallel sub-tasks respecting `depends_on`) → per-step `validate_result.py` → `synthesize.sh` → `agent_used:"orchestrated"`. Irreversible sub-steps are **held** (not run) and `requires_approval:true`. RAG grounding now lives in `handle_gemini.sh`, not here. Fail-soft: plan/synth failure → simple route. Env: `ORCH_DISABLE`, `ORCH_MAX_CONCURRENCY`, `PLAN_MAX_STEPS`, `ORCH_STEP_TIMEOUT`, `CLAUDE_MODEL`. See `agent/scripts/AGENTS.md` for the full contract. Override via `HANDLER` env. |
-| `scripts/handle_codex.sh` / `scripts/handle_gemini.sh` | Executors. Codex = code/technical (read-only sandbox). Gemini = knowledge/RAG grounding from role-scoped kb-docs (via `KB_QUERY_JS`), fail-soft to Claude. |
+| `scripts/handle_task.sh` | **Router + orchestrator (Claude = brain, Codex = executor).** Tries `plan_task.sh`: 0 steps → simple Codex route; 1 step → reuse that step (no 2nd LLM call); ≥2 steps → decompose (parallel sub-tasks respecting `depends_on`) → per-step `validate_result.py` → `synthesize.sh` → `agent_used:"orchestrated"`. Irreversible sub-steps are **held** (not run) and `requires_approval:true`. Fail-soft: plan/synth failure → simple Codex route. Env: `ORCH_DISABLE`, `ORCH_MAX_CONCURRENCY`, `PLAN_MAX_STEPS`, `ORCH_STEP_TIMEOUT`, `CLAUDE_MODEL`. See `agent/scripts/AGENTS.md` for the full contract. Override via `HANDLER` env. |
+| `scripts/handle_codex.sh` | Executor. Codex = universal read-only helper with role-scoped kb-docs RAG (via `KB_QUERY_JS`) for PM/reporting/KB-MCP selection/Bitrix/1C guidance, production questions, and calculations. |
 | `scripts/plan_task.sh` / `scripts/synthesize.sh` / `scripts/validate_plan.py` | PLAN (Claude → JSON plan) / SYNTHESIZE (Claude → one grounded answer) / deterministic AI-free plan validator. |
 | `scripts/check_token_limit.py` | Deterministic 5000-token gate, `--trim` drops oldest context. |
 | `scripts/validate_result.py` | Deterministic result filter (math/format, no AI). `kind` → validator (weight/selection/ilogic/dxf/json). Exit 0 pass, 1 fail+reason. |
 
 Config: `agent/.env` (see `.env.example`) — `API_URL`, `WORKER_TOKEN`. All under
-**subscription**, no API keys. **Claude = brain**: a pure router (`claude -p`,
-`claude login`) that only picks the executor — it does not answer. **Executors:**
-**Codex** (`codex exec`, code/technical) and **Gemini** (`gemini`, knowledge/KB).
-Worker host needs each CLI logged in. Fail-soft: Codex fail → knowledge executor;
-Gemini absent → Claude answers as fallback.
+**subscription**, no API keys. **Claude = brain**: planner/synthesizer (`claude -p`,
+`claude login`) that decomposes tasks and synthesizes sub-results. **Codex** is the
+single active executor (`codex exec`) and must be logged in on the worker host.
 
 **Orchestration env (handle_task.sh):** `ORCH_DISABLE=1` (incident kill-switch —
 forces simple one-executor mode), `ORCH_MAX_CONCURRENCY` (default 3),
@@ -74,8 +72,8 @@ the gate fires *before* any irreversible action, not after.
 
 **Known limitation (do not rely on yet):** on approve, `poll.sh` re-completes the
 stored preview result and does **not** re-run the handler — so held sub-steps are
-**not auto-resumed/executed** after approval. This is safe only while all
-executors are read-only (codex `--sandbox read-only`, gemini reads KB). Before
+**not auto-resumed/executed** after approval. This is safe only while the active
+executor is read-only (codex `--sandbox read-only`). Before
 enabling any write-capable executor (Bitrix/email/`.dxf`-to-machine), wire
 resume-after-approval (re-invoke the handler in resume mode + rework migration
 014's exact-match binding for orchestrated tasks). For the single-shot path the
@@ -86,18 +84,17 @@ handler still produces a preview and the irreversible step would run at
 
 ## RAG grounding (kb-docs)
 
-The **knowledge executor `handle_gemini.sh`** (reached via `handle_task.sh`'s
-routing/decomposition) enriches the answer from the company knowledge base before
-calling the LLM:
+The **Codex executor `handle_codex.sh`** enriches the answer from the company
+knowledge base before calling Codex:
 
 1. `poll.sh` injects `available_knowledge_bases` (role-filtered via `/api/kb`),
    each entry carrying `mcp_server` and `library` (from `mcp_config.library`).
-2. For every `kb-docs` library the role may access, the handler runs the
+2. For every `kb-docs` library the role may access, the executor runs the
    connector retrieval CLI (`KB_QUERY_JS`, default
    `connectors/kb-docs/dist/query-cli.js`) over the user message.
 3. Top passages are injected into the system prompt; the model must answer only
-   from them and cite `[library/document]`. Result → `agent_used: "kb"` with the
-   sources in `steps`. If nothing is retrieved, it falls back to a plain answer.
+   from them and cite `[library/document]`. Result → `agent_used: "codex"` with
+   the sources in `steps`. If nothing is retrieved, it falls back to a plain answer.
 
 **Deploy note:** the connector must be built (`cd connectors/kb-docs && npm ci
 && npm run build`) so `dist/query-cli.js` exists, otherwise grounding silently
@@ -131,20 +128,20 @@ Worker routes use the normalized access matrix (`role_agent_access`,
 `knowledge_base_role_access`). Do not call the unfiltered worker views for task
 routing. `poll.sh` injects sanitized `available_agents` and
 `available_knowledge_bases` into the handler payload. Each KB has `name`,
-`description`, `mcp_server` (key in `agent/.mcp.json`). Pick a KB only from that
-filtered list. Questions like "порахуй", "підкажи", domain/company questions →
-`kb` agent with the matching MCP server.
+`description`, `mcp_server` (key in `agent/.mcp.json`). Codex receives only that
+filtered KB context. Questions like "порахуй", "підкажи", domain/company
+questions → Codex with the matching role-scoped KB context when available.
 
 Fallback routing by signal words:
 
 | Signal | Agent |
 |---|---|
-| питання по базі знань, порахуй, підкажи, як у нас… | `kb` |
+| питання по базі знань, порахуй, підкажи, як у нас… | `codex` + KB context |
 | код, скрипт, функція, debug, implement, fix | `codex` |
-| знайди, пошук, google, web, news | `search` |
-| drive, документ, файл, таблиця | `drive` |
-| bitrix, crm, ліди, угода | `bitrix` |
-| email, лист, відправ | `email` |
+| знайди, пошук, google, web, news | `codex` (read-only guidance; no live web executor yet) |
+| drive, документ, файл, таблиця | `codex` (read-only guidance; no Drive write executor yet) |
+| bitrix, crm, ліди, угода | `codex` (read-only guidance; writes require approval/integration) |
+| email, лист, відправ | `codex` (draft only; no send executor yet) |
 | (нічого з вище) | `codex` |
 
 Role `viewer` — read-only answers, never mutate anything. Respect `allowed_roles` strictly: if the user's role is not in the KB's list, do not query that KB even if relevant — answer that access is restricted.
@@ -182,13 +179,13 @@ POST /api/tasks/complete
   "task_id": "...", "worker_id": "orch-...",
   "result": {
     "answer": "...",            // Ukrainian
-    "agent_used": "kb",         // or "codex" | "orchestrated" (decomposed task)
+    "agent_used": "codex",      // or "orchestrated" (decomposed task)
     "steps": ["..."],
     "tokens": { "input": 0, "output": 0 },
     "requires_approval": false, // true → awaiting_approval before complete
     "raw_result": {}
   },
-  "agent": "kb"
+  "agent": "codex"
 }
 ```
 

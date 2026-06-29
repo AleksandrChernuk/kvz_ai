@@ -7,18 +7,18 @@ input=$(cat)
 
 if [[ "$args" == *планувальник* ]]; then
   if [[ "$input" == *bitrix* || "$input" == *угод* ]]; then
-    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"gemini","prompt":"запиши угоду в bitrix","depends_on":["s1"]}]}'
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"codex","prompt":"запиши угоду в bitrix","depends_on":["s1"]}]}'
   elif [[ "$input" == *перевір* ]]; then
     # крок s1 декларує validation, що НЕ проходить (value поза межами) → step failed
-    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[],"validation":{"kind":"weight","value":-1,"unit":"kg"}},{"id":"s2","executor":"gemini","prompt":"підбери обладнання","depends_on":["s1"]}]}'
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[],"validation":{"kind":"weight","value":-1,"unit":"kg"}},{"id":"s2","executor":"codex","prompt":"підбери обладнання","depends_on":["s1"]}]}'
   elif [[ "$input" == *звір* ]]; then
     # крок s1 декларує validation, що проходить → step ok
-    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[],"validation":{"kind":"weight","value":12.5,"unit":"kg"}},{"id":"s2","executor":"gemini","prompt":"підбери обладнання","depends_on":["s1"]}]}'
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[],"validation":{"kind":"weight","value":12.5,"unit":"kg"}},{"id":"s2","executor":"codex","prompt":"підбери обладнання","depends_on":["s1"]}]}'
   elif [[ "$input" == *лазерн* ]]; then
     # ПОРАДНА згадка «лазер» (не дія) — НЕ має тригерити гейт незворотності
-    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"gemini","prompt":"підкажи про лазерне різання сталі","depends_on":[]}]}'
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"codex","prompt":"підкажи про лазерне різання сталі","depends_on":[]}]}'
   elif [[ "$input" == *" та "* ]]; then
-    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"gemini","prompt":"підбери обладнання","depends_on":["s1"]}]}'
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"codex","prompt":"підбери обладнання","depends_on":["s1"]}]}'
   else
     plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй","depends_on":[]}]}'
   fi

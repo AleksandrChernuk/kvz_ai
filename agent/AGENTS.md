@@ -9,8 +9,8 @@ protocol is in **`CLAUDE.md`** (read it first); this is the short orientation.
 scripts/poll.sh             queue loop: claim → token gate → enrich (role-scoped
                             agents+KBs) → handler → deterministic filter →
                             approval gate → complete/fail. Watchdog every 10 iters.
-scripts/handle_task.sh      LLM handler with RAG grounding (kb-docs libraries) →
-                            Anthropic; agent_used:"kb" + sources, else "codex".
+scripts/handle_task.sh      Claude plans/orchestrates; Codex executes read-only
+                            with RAG grounding from kb-docs libraries.
 scripts/check_token_limit.py deterministic 5000-token gate (--trim drops oldest)
 scripts/validate_result.py  deterministic result filter (math/format, no AI)
 .mcp.json                   MCP connectors; keys = knowledge_bases.mcp_server
@@ -34,9 +34,8 @@ scripts/validate_result.py  deterministic result filter (math/format, no AI)
 `agent/.env` (see `.env.example`): `API_URL`, `WORKER_TOKEN`, optional
 `MCP_GATEWAY_URL`/`MCP_GATEWAY_TOKEN`, `CLAUDE_MODEL`, `KB_QUERY_JS`.
 
-All under **subscription**, no API keys. **Claude = brain** — a pure router
-(`claude -p`, `claude login`): it only decides the executor, it does not answer.
-**Executors:** **Codex** (`codex exec`, code/technical) and **Gemini** (`gemini`,
-knowledge/KB answers). Each CLI must be logged in on the worker host. Fail-soft:
-Codex failure → knowledge executor; Gemini absent → Claude answers as a fallback
-until Gemini is set up.
+All under **subscription**, no API keys. **Claude = brain** — planner/synthesizer
+(`claude -p`, `claude login`): it decomposes and synthesizes, but does not execute
+user work directly. **Executor:** **Codex** (`codex exec`) as the universal
+read-only helper for PM, reports, KB/MCP selection, Bitrix/1C guidance, production
+questions, and calculations. Codex must be logged in on the worker host.

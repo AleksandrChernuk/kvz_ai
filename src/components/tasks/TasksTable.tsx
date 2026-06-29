@@ -17,12 +17,35 @@ import {
 } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
+const EMPTY_VALUE = "—"
+
 function upsert(list: Task[], t: Task): Task[] {
   const idx = list.findIndex((x) => x.id === t.id)
   if (idx === -1) return [t, ...list]
   const next = [...list]
   next[idx] = t
   return next
+}
+
+function formatJson(value: unknown) {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function formatAgent(agent: Task["agent"]) {
+  return agent ? AGENT_LABELS[agent] : EMPTY_VALUE
+}
+
+function formatTokenUsage(
+  tokens: NonNullable<Task["result"]>["tokens"] | undefined
+) {
+  if (!tokens) return EMPTY_VALUE
+  const input = typeof tokens.input === "number" ? tokens.input : 0
+  const output = typeof tokens.output === "number" ? tokens.output : 0
+  return `${input} / ${output}`
 }
 
 export function TasksTable({
@@ -133,26 +156,107 @@ function FragmentRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={4} className="bg-muted/30">
-            <div className="grid gap-3 py-2 text-xs md:grid-cols-2">
-              <div>
-                <p className="mb-1 font-medium">payload</p>
-                <pre className="overflow-x-auto rounded bg-background p-2">
-                  {JSON.stringify(task.payload, null, 2)}
-                </pre>
+            <div className="space-y-4 py-3 text-sm">
+              {task.error && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
+                  <p className="text-xs font-medium uppercase tracking-wide">
+                    Помилка
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap">{task.error}</p>
+                </div>
+              )}
+
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                <section className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Запит
+                  </p>
+                  <div className="min-h-20 rounded-md border bg-background/80 p-3">
+                    <p className="whitespace-pre-wrap">
+                      {task.payload?.user_message || EMPTY_VALUE}
+                    </p>
+                  </div>
+                </section>
+
+                <section className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Відповідь
+                  </p>
+                  <div className="min-h-20 rounded-md border bg-background/80 p-3">
+                    <p className="whitespace-pre-wrap">
+                      {task.result?.answer || "Відповіді ще немає"}
+                    </p>
+                  </div>
+                </section>
               </div>
-              <div>
-                <p className="mb-1 font-medium">result</p>
-                <pre className="overflow-x-auto rounded bg-background p-2">
-                  {task.result ? JSON.stringify(task.result, null, 2) : "—"}
-                </pre>
-                {task.error && (
-                  <p className="mt-2 text-destructive">error: {task.error}</p>
-                )}
+
+              <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                <TaskFact label="Агент" value={formatAgent(task.agent)} />
+                <TaskFact
+                  label="Виконав"
+                  value={formatAgent(task.result?.agent_used ?? null)}
+                />
+                <TaskFact
+                  label="Контекст"
+                  value={`${task.payload?.thread_context?.length ?? 0} повідомлень`}
+                />
+                <TaskFact
+                  label="Токени input / output"
+                  value={formatTokenUsage(task.result?.tokens)}
+                />
               </div>
+
+              {task.result?.steps && task.result.steps.length > 0 && (
+                <section className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Кроки
+                  </p>
+                  <ul className="space-y-1 rounded-md border bg-background/80 p-3 text-xs">
+                    {task.result.steps.map((step, idx) => (
+                      <li key={`${idx}-${step}`} className="whitespace-pre-wrap">
+                        {idx + 1}. {step}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              <details className="rounded-md border bg-background/80 p-3 text-xs">
+                <summary className="cursor-pointer font-medium">
+                  Технічні деталі
+                </summary>
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <div>
+                    <p className="mb-1 font-medium text-muted-foreground">
+                      Payload
+                    </p>
+                    <pre className="max-h-72 overflow-auto rounded bg-muted/40 p-2">
+                      {formatJson(task.payload)}
+                    </pre>
+                  </div>
+                  <div>
+                    <p className="mb-1 font-medium text-muted-foreground">
+                      Result
+                    </p>
+                    <pre className="max-h-72 overflow-auto rounded bg-muted/40 p-2">
+                      {task.result ? formatJson(task.result) : EMPTY_VALUE}
+                    </pre>
+                  </div>
+                </div>
+              </details>
             </div>
           </TableCell>
         </TableRow>
       )}
     </>
+  )
+}
+
+function TaskFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background/80 p-3">
+      <p className="font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm">{value}</p>
+    </div>
   )
 }

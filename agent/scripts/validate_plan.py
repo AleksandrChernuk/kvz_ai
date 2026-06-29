@@ -9,14 +9,14 @@
 Формат плану (stdin або --file):
 
   {"steps": [
-    {"id": "s1", "executor": "codex",  "prompt": "...", "depends_on": []},
-    {"id": "s2", "executor": "gemini", "prompt": "...", "depends_on": []},
-    {"id": "s3", "executor": "codex",  "prompt": "...", "depends_on": ["s1","s2"]}
+    {"id": "s1", "executor": "codex", "prompt": "...", "depends_on": []},
+    {"id": "s2", "executor": "codex", "prompt": "...", "depends_on": []},
+    {"id": "s3", "executor": "codex", "prompt": "...", "depends_on": ["s1","s2"]}
   ]}
 
 Правила (фіксовані, не змінювати без бампа PLAN_VALIDATOR_VERSION):
   - steps — непорожній список, не більше MAX_STEPS кроків;
-  - кожен крок: id (унікальний непорожній рядок), executor ∈ {codex, gemini},
+  - кожен крок: id (унікальний непорожній рядок), executor == codex,
     prompt (непорожній рядок), depends_on (список наявних id, без self-ref);
   - граф залежностей ацикличний (топологічне сортування проходить).
 
@@ -44,7 +44,7 @@ import sys
 # (`case "$done_ids" in *" $id "*`); пробіл/спецсимвол в id зламав би облік.
 _ID_RE = re.compile(r"^[A-Za-z0-9_]{1,32}$")
 
-PLAN_VALIDATOR_VERSION = 1
+PLAN_VALIDATOR_VERSION = 2
 
 # Межа кроків — запобіжник від розповзання плану. Можна звузити через
 # PLAN_MAX_STEPS (напр. воркер), але ніколи не розширити понад фіксований стелю.
@@ -55,7 +55,7 @@ except ValueError:
     MAX_STEPS = _HARD_MAX_STEPS
 if MAX_STEPS < 1:
     MAX_STEPS = _HARD_MAX_STEPS
-ALLOWED_EXECUTORS = {"codex", "gemini"}
+ALLOWED_EXECUTORS = {"codex"}
 
 
 def _fail(reason: str) -> dict:
@@ -133,12 +133,12 @@ def _self_test() -> int:
         ({"steps": [{"id": "s1", "executor": "codex", "prompt": "порахуй", "depends_on": []}]}, True),
         ({"steps": [
             {"id": "s1", "executor": "codex", "prompt": "вага", "depends_on": []},
-            {"id": "s2", "executor": "gemini", "prompt": "обладнання", "depends_on": []},
+            {"id": "s2", "executor": "codex", "prompt": "обладнання", "depends_on": []},
             {"id": "s3", "executor": "codex", "prompt": "dxf", "depends_on": ["s1", "s2"]},
         ]}, True),
         ({"steps": []}, False),
         ({"steps": "x"}, False),
-        ({"steps": [{"id": "s1", "executor": "openai", "prompt": "x", "depends_on": []}]}, False),
+        ({"steps": [{"id": "s1", "executor": "gemini", "prompt": "x", "depends_on": []}]}, False),
         ({"steps": [{"id": "s1", "executor": "codex", "prompt": "", "depends_on": []}]}, False),
         ({"steps": [
             {"id": "s1", "executor": "codex", "prompt": "x", "depends_on": []},
@@ -179,7 +179,7 @@ def _self_test() -> int:
     order = validate_plan({"steps": [
         {"id": "s3", "executor": "codex", "prompt": "dxf", "depends_on": ["s1", "s2"]},
         {"id": "s1", "executor": "codex", "prompt": "вага", "depends_on": []},
-        {"id": "s2", "executor": "gemini", "prompt": "обладнання", "depends_on": []},
+        {"id": "s2", "executor": "codex", "prompt": "обладнання", "depends_on": []},
     ]}).get("order")
     if order != ["s1", "s2", "s3"]:
         failed += 1

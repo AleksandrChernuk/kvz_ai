@@ -2,8 +2,7 @@
 # Маршрутизатор + оркестратор (МОЗОК = Claude). Читає TaskPayload зі stdin.
 #
 # Два режими (opt-in декомпозиція):
-#   1. ПРОСТА задача (один намір) → один виконавець (як було): Claude класифікує →
-#      делегує codex/gemini. Жодних зайвих LLM-викликів.
+#   1. ПРОСТА задача (один намір) → Codex як єдиний read-only виконавець.
 #   2. СКЛАДЕНА задача → Claude PLAN розбиває на під-задачі → виконавці працюють
 #      (паралельно, де можна) → детермінований фільтр на кожен під-результат →
 #      Claude SYNTHESIZE зводить усе в одну відповідь (agent_used:"orchestrated").
@@ -42,7 +41,7 @@ USER_MESSAGE=$(printf '%s' "$PAYLOAD" | jq -r '.user_message // ""')
 AVAILABLE_AGENTS=$(printf '%s' "$PAYLOAD" | jq -c '.available_agents // []')
 PREFERRED_AGENT=$(printf '%s' "$PAYLOAD" | jq -r '.preferred_agent // empty')
 
-# Доступ ролі до виконавця codex; інакше технічні кроки йдуть на виконавця знань.
+# Доступ ролі до виконавця codex.
 codex_allowed() {
   printf '%s' "$AVAILABLE_AGENTS" | jq -e '.[] | select(.key == "codex")' >/dev/null 2>&1
 }
@@ -51,57 +50,26 @@ agent_allowed() { # $1 = agent key
   printf '%s' "$AVAILABLE_AGENTS" | jq -e --arg key "$1" '.[] | select(.key == $key)' >/dev/null 2>&1
 }
 
-# Делегування одного payload потрібному виконавцю.
-# $1 = executor; $2 = "nofallback" → НЕ підміняти codex на gemini (для кроків із
-# детермінованою перевіркою: математику не можна віддавати виконавцю знань).
-# За замовчуванням fail-soft: codex недоступний/впав → виконавець знань.
+# Делегування одного payload єдиному виконавцю. Параметр executor лишається в
+# контракті плану для провенансу, але зараз усі кроки виконуються через Codex.
 delegate() { # stdin: payload   stdout: TaskResult
-  local exec="$1" nofb="${2:-}" pl out
+  local exec="$1" pl out
   pl=$(cat)
-  if [ "$exec" = "codex" ]; then
-    if codex_allowed && command -v codex >/dev/null \
-       && out=$(printf '%s' "$pl" | with_timeout "$STEP_TIMEOUT" "$SCRIPT_DIR/handle_codex.sh" 2>>/tmp/kvz-codex.log); then
-      printf '%s' "$out"; return 0
-    fi
-    if [ "$nofb" = "nofallback" ]; then
-      echo "codex недоступний/впав, fallback заборонено (перевірений крок)" >&2
-      return 1
-    fi
-    echo "codex виконавець впав — делегуємо виконавцю знань" >&2
+  if ! codex_allowed; then
+    echo "codex недоступний для ролі користувача (executor=$exec)" >&2
+    return 1
   fi
-  printf '%s' "$pl" | with_timeout "$STEP_TIMEOUT" "$SCRIPT_DIR/handle_gemini.sh"
+  if command -v codex >/dev/null \
+     && out=$(printf '%s' "$pl" | with_timeout "$STEP_TIMEOUT" "$SCRIPT_DIR/handle_codex.sh" 2>>/tmp/kvz-codex.log); then
+    printf '%s' "$out"; return 0
+  fi
+  echo "codex виконавець недоступний/впав" >&2
+  return 1
 }
 
-# --- ПРОСТИЙ режим: класифікація одним словом + одно-виконавчий шлях ----------
+# --- ПРОСТИЙ режим: одно-виконавчий шлях через Codex -------------------------
 route_single() {
-  local executor=""
-  if [ -n "$PREFERRED_AGENT" ] && agent_allowed "$PREFERRED_AGENT"; then
-    case "$PREFERRED_AGENT" in
-      codex) executor="codex" ;;
-      *) executor="gemini" ;;
-    esac
-  fi
-  if [ -z "$executor" ] && command -v claude >/dev/null && [ -n "$USER_MESSAGE" ]; then
-    local rsys rjson
-    rsys="Ти — маршрутизатор задач. Виведи РІВНО одне слово без пояснень: \
-codex — якщо це код, скрипт, розрахунок, генерація файлів, технічна робота; \
-gemini — якщо це знання, довідка, питання, спілкування."
-    set +e
-    rjson=$(printf '%s' "$USER_MESSAGE" | with_timeout "$STEP_TIMEOUT" claude -p \
-      --model "$CLAUDE_MODEL" --append-system-prompt "$rsys" \
-      --output-format json --allowed-tools "" 2>>/tmp/kvz-router.log)
-    set -e
-    executor=$(printf '%s' "$rjson" | jq -r '.result // empty' 2>/dev/null \
-      | tr '[:upper:]' '[:lower:]' | grep -oE 'codex|gemini' | head -1 || true)
-  fi
-  if [ -z "$executor" ]; then
-    case "$(printf '%s' "$USER_MESSAGE" | tr '[:upper:]' '[:lower:]')" in
-      *код*|*скрипт*|*функці*|*програм*|*debug*|*деба*|*баг*|*refactor*|*implement*|*python*|*javascript*|*typescript*|*розрахуй*|*порахуй*|*обчисл*|*ilogic*)
-        executor="codex" ;;
-      *) executor="gemini" ;;
-    esac
-  fi
-  printf '%s' "$PAYLOAD" | delegate "$executor"
+  printf '%s' "$PAYLOAD" | delegate "codex"
 }
 
 if [ -n "$PREFERRED_AGENT" ] && agent_allowed "$PREFERRED_AGENT"; then
@@ -234,12 +202,8 @@ _run_step_impl() { # $1 = step id
     return 0
   fi
 
-  # Перевірені кроки (validation.kind) не віддаємо на cross-fallback codex→gemini.
-  nofb=""
-  [ -n "$haskind" ] && nofb="nofallback"
-
   set +e
-  result=$(printf '%s' "$subpayload" | delegate "$exec" "$nofb" 2>>/tmp/kvz-orch.log)
+  result=$(printf '%s' "$subpayload" | delegate "$exec" 2>>/tmp/kvz-orch.log)
   rc=$?
   set -e
 
@@ -250,12 +214,10 @@ _run_step_impl() { # $1 = step id
     return 0
   else
     answer=$(printf '%s' "$result" | jq -r '.answer // ""')
-    # Фактичний виконавець (провенанс): codex→codex, kb→gemini (важливо, якщо був
-    # fail-soft на знання). Інакше — як замовляв план.
+    # Фактичний виконавець (провенанс): нині всі кроки мають іти через Codex.
     actual=$(printf '%s' "$result" | jq -r '.agent_used // empty')
     case "$actual" in
       codex) actual="codex" ;;
-      kb|gemini) actual="gemini" ;;
       *) actual="$exec" ;;
     esac
     # Токени виконавця (для агрегації; нуль, якщо CLI не повернув usage).
