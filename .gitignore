@@ -55,3 +55,6 @@ next-env.d.ts
 
 # review session archives
 .full-review-archive-*/
+
+# local MCP server config
+.mcp.json
