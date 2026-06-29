@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { fmtTime } from "@/lib/task-meta"
+import { ClientTime } from "@/components/common/ClientTime"
 
 const STATUS_VARIANTS: Record<Run["status"], "default" | "secondary" | "destructive"> = {
   active: "secondary",
@@ -87,7 +87,7 @@ export function RunsTable({ initialRuns }: { initialRuns: Run[] }) {
                 </Badge>
               </TableCell>
               <TableCell className="text-sm">{r.agent_count}</TableCell>
-              <TableCell className="text-xs">{fmtTime(r.started_at)}</TableCell>
+              <TableCell className="text-xs"><ClientTime iso={r.started_at} /></TableCell>
               <TableCell className="text-xs">
                 {duration(r.started_at, r.completed_at)}
               </TableCell>

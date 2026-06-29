@@ -6,12 +6,8 @@ import { toast } from "sonner"
 
 import { createClient } from "@/lib/supabase/client"
 import type { Task } from "@/types/database"
-import {
-  AGENT_LABELS,
-  STATUS_LABELS,
-  STATUS_VARIANTS,
-  fmtTime,
-} from "@/lib/task-meta"
+import { AGENT_LABELS, STATUS_LABELS, STATUS_VARIANTS } from "@/lib/task-meta"
+import { ClientTime } from "@/components/common/ClientTime"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -195,7 +191,7 @@ export function QueueTable({ initialTasks }: { initialTasks: Task[] }) {
                 <TableCell className="font-mono text-xs">
                   {t.status === "running" ? (t.locked_by ?? "—") : "—"}
                 </TableCell>
-                <TableCell className="text-xs">{fmtTime(t.created_at)}</TableCell>
+                <TableCell className="text-xs"><ClientTime iso={t.created_at} /></TableCell>
                 <TableCell>
                   {(t.status === "pending" || t.status === "running") && (
                     <Button

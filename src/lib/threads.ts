@@ -30,7 +30,7 @@ export async function loadThreadsWithPreview(
   const previews = new Map<string, string>()
   for (const m of msgs ?? []) {
     if (!previews.has(m.thread_id)) {
-      previews.set(m.thread_id, m.content.slice(0, 40))
+      previews.set(m.thread_id, (m.content ?? "").slice(0, 40))
     }
   }
 

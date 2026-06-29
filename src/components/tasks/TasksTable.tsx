@@ -4,12 +4,8 @@ import { useEffect, useState } from "react"
 
 import { createClient } from "@/lib/supabase/client"
 import type { Task } from "@/types/database"
-import {
-  AGENT_LABELS,
-  STATUS_LABELS,
-  STATUS_VARIANTS,
-  fmtTime,
-} from "@/lib/task-meta"
+import { AGENT_LABELS, STATUS_LABELS, STATUS_VARIANTS } from "@/lib/task-meta"
+import { ClientTime } from "@/components/common/ClientTime"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -117,7 +113,7 @@ function FragmentRow({
   return (
     <>
       <TableRow className="cursor-pointer" onClick={onToggle}>
-        <TableCell className="text-xs">{fmtTime(task.created_at)}</TableCell>
+        <TableCell className="text-xs"><ClientTime iso={task.created_at} /></TableCell>
         <TableCell>
           {task.agent ? (
             <Badge variant="secondary">{AGENT_LABELS[task.agent]}</Badge>

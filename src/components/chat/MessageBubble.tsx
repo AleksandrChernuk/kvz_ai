@@ -1,3 +1,7 @@
+"use client"
+
+import { useEffect, useState } from "react"
+
 import type { Message } from "@/types/database"
 import { cn } from "@/lib/utils"
 import { TaskStatusBadge } from "@/components/chat/TaskStatusBadge"
@@ -7,6 +11,19 @@ function formatTime(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+// Час форматуємо лише після монтування на клієнті: toLocaleTimeString залежить
+// від часового поясу, тож SSR (UTC на Vercel) і браузер (локальний TZ) дали б
+// різний рядок → помилка гідрації, що валила сторінку треда.
+function MessageTime({ iso }: { iso: string }) {
+  const [time, setTime] = useState("")
+  useEffect(() => {
+    // навмисний клієнт-онлі формат (TZ-залежний) — поза гідрацією
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTime(formatTime(iso))
+  }, [iso])
+  return <span suppressHydrationWarning>{time}</span>
 }
 
 export function MessageBubble({ message }: { message: Message }) {
@@ -31,7 +48,7 @@ export function MessageBubble({ message }: { message: Message }) {
             isUser ? "justify-end" : "justify-start"
           )}
         >
-          <span>{formatTime(message.created_at)}</span>
+          <MessageTime iso={message.created_at} />
         </div>
         {message.task_id && <TaskStatusBadge taskId={message.task_id} />}
       </div>
