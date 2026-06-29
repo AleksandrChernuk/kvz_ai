@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, Plus, SendHorizontal } from "lucide-react"
+import { Check, Plug, Plus, SendHorizontal } from "lucide-react"
 import { toast } from "sonner"
 
-import type { AgentCatalogItem, AgentType } from "@/types/database"
+import type { AgentCatalogItem, AgentType, KnowledgeBase } from "@/types/database"
 import type { UserRole } from "@/types/roles"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,19 +28,31 @@ type Props = {
 }
 
 type ChatAgentMode = "auto" | AgentType
+type ChatKnowledgeBaseMode = "auto" | string
 
-export function InputBar({ threadId, disabled, onSend, onSendFailed }: Props) {
+export function InputBar({ threadId, userRole, disabled, onSend, onSendFailed }: Props) {
   const [value, setValue] = useState("")
   const [pending, setPending] = useState(false)
   const [agents, setAgents] = useState<AgentCatalogItem[]>([])
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [agentMode, setAgentMode] = useState<ChatAgentMode>("auto")
+  const [knowledgeBaseMode, setKnowledgeBaseMode] =
+    useState<ChatKnowledgeBaseMode>("auto")
   const ref = useRef<HTMLTextAreaElement>(null)
 
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.key === agentMode),
     [agentMode, agents]
   )
+  const selectedKnowledgeBase = useMemo(
+    () => knowledgeBases.find((kb) => kb.id === knowledgeBaseMode),
+    [knowledgeBaseMode, knowledgeBases]
+  )
   const modeLabel = agentMode === "auto" ? "Авто" : (selectedAgent?.name ?? agentMode)
+  const knowledgeBaseLabel =
+    knowledgeBaseMode === "auto"
+      ? "Усі доступні"
+      : (selectedKnowledgeBase?.name ?? "Обраний MCP")
 
   function autoResize() {
     const el = ref.current
@@ -53,25 +65,40 @@ export function InputBar({ threadId, disabled, onSend, onSendFailed }: Props) {
   useEffect(() => {
     let active = true
 
-    fetch("/api/agents")
-      .then((res) => {
+    Promise.all([
+      fetch("/api/agents").then((res) => {
         if (!res.ok) throw new Error("Не вдалося отримати агентів")
         return res.json() as Promise<{ agents?: AgentCatalogItem[] }>
-      })
-      .then((data) => {
+      }),
+      fetch("/api/kb").then((res) => {
+        if (!res.ok) throw new Error("Не вдалося отримати MCP-конектори")
+        return res.json() as Promise<{ knowledge_bases?: KnowledgeBase[] }>
+      }),
+    ])
+      .then(([agentsData, kbData]) => {
         if (!active) return
         setAgents(
-          (data.agents ?? []).filter((agent) => agent.key !== "orchestrated")
+          (agentsData.agents ?? []).filter((agent) => agent.key !== "orchestrated")
         )
+        setKnowledgeBases(kbData.knowledge_bases ?? [])
       })
       .catch(() => {
-        if (active) setAgents([])
+        if (!active) return
+        setAgents([])
+        setKnowledgeBases([])
       })
 
     return () => {
       active = false
     }
   }, [])
+
+  function selectKnowledgeBase(id: ChatKnowledgeBaseMode) {
+    setKnowledgeBaseMode(id)
+    if (id !== "auto" && agents.some((agent) => agent.key === "kb")) {
+      setAgentMode("kb")
+    }
+  }
 
   async function send() {
     const content = value.trim()
@@ -90,6 +117,8 @@ export function InputBar({ threadId, disabled, onSend, onSendFailed }: Props) {
           content,
           thread_id: threadId,
           preferred_agent: agentMode === "auto" ? undefined : agentMode,
+          preferred_knowledge_base_id:
+            knowledgeBaseMode === "auto" ? undefined : knowledgeBaseMode,
         }),
       })
       if (!res.ok) {
@@ -112,9 +141,13 @@ export function InputBar({ threadId, disabled, onSend, onSendFailed }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span>Режим:</span>
+        <span>Агент:</span>
         <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">
           {modeLabel}
+        </span>
+        <span className="ml-2">MCP:</span>
+        <span className="max-w-40 truncate rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">
+          {knowledgeBaseLabel}
         </span>
       </div>
       <div className="flex items-end gap-2">
@@ -124,14 +157,14 @@ export function InputBar({ threadId, disabled, onSend, onSendFailed }: Props) {
               type="button"
               variant="outline"
               size="icon"
-              aria-label="Обрати агента"
+              aria-label="Обрати агента або MCP-конектор"
               disabled={disabled || pending}
             >
               <Plus className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top">
-            <DropdownMenuLabel>Обробити через</DropdownMenuLabel>
+          <DropdownMenuContent align="start" side="top" className="w-72">
+            <DropdownMenuLabel>Агент</DropdownMenuLabel>
             <DropdownMenuItem onSelect={() => setAgentMode("auto")}>
               <span>Авто</span>
               {agentMode === "auto" && <Check className="ml-auto size-4" />}
@@ -149,6 +182,34 @@ export function InputBar({ threadId, disabled, onSend, onSendFailed }: Props) {
             {agents.length === 0 && (
               <DropdownMenuItem disabled>
                 Немає доступних агентів
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>MCP-конектор</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => selectKnowledgeBase("auto")}>
+              <Plug className="size-4 text-muted-foreground" />
+              <span>Усі доступні</span>
+              {knowledgeBaseMode === "auto" && <Check className="ml-auto size-4" />}
+            </DropdownMenuItem>
+            {knowledgeBases.map((kb) => (
+              <DropdownMenuItem
+                key={kb.id}
+                className="items-start"
+                onSelect={() => selectKnowledgeBase(kb.id)}
+              >
+                <Plug className="mt-0.5 size-4 text-muted-foreground" />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate">{kb.name}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {kb.mcp_server}
+                  </span>
+                </span>
+                {knowledgeBaseMode === kb.id && <Check className="ml-auto size-4" />}
+              </DropdownMenuItem>
+            ))}
+            {knowledgeBases.length === 0 && (
+              <DropdownMenuItem disabled>
+                Немає доступних MCP-конекторів для ролі {userRole}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

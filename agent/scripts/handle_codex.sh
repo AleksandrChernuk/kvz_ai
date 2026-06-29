@@ -11,12 +11,19 @@ command -v codex >/dev/null || { echo "потрібен залогінений c
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KB_QUERY_JS="${KB_QUERY_JS:-$SCRIPT_DIR/../../connectors/kb-docs/dist/query-cli.js}"
+NOTEBOOKLM_MCP_PACKAGE="${NOTEBOOKLM_MCP_PACKAGE:-notebooklm-mcp-server@3.0.7}"
 
 PAYLOAD=$(cat)
 USER_ROLE=$(echo "$PAYLOAD" | jq -r '.user_role // "viewer"')
 USER_MESSAGE=$(echo "$PAYLOAD" | jq -r '.user_message // ""')
 AVAILABLE_KBS=$(echo "$PAYLOAD" | jq -c '.available_knowledge_bases // []')
+PREFERRED_KB=$(echo "$PAYLOAD" | jq -c '.preferred_knowledge_base // empty')
+PREFERRED_KB_ID=$(echo "$PAYLOAD" | jq -r '.preferred_knowledge_base.id // empty')
 [ -n "$USER_MESSAGE" ] || { echo "порожнє повідомлення" >&2; exit 1; }
+
+if [ -n "$PREFERRED_KB_ID" ]; then
+  AVAILABLE_KBS=$(echo "$AVAILABLE_KBS" | jq -c --arg id "$PREFERRED_KB_ID" '[.[] | select(.id == $id)]')
+fi
 
 # --- RAG retrieval (role-scoped libraries) ----------------------------------
 KB_LIBS=$(echo "$AVAILABLE_KBS" | jq -r '.[] | select(.mcp_server == "kb-docs") | .library | select(. != null and . != "")' | sort -u)
@@ -39,7 +46,25 @@ INSTR="Ти — read-only помічник внутрішньої системи
 якщо користувач прямо не просить технічну консультацію. Допомагай сформувати запит, \
 пояснити дані, підготувати чернетку звіту або план дій. \
 Роль користувача: $USER_ROLE. Нічого не запускай, не змінюй у системі, не записуй у \
-Bitrix24/1С і не обіцяй зовнішні дії. Для ролі viewer — тільки довідка."
+Bitrix24/1С і не обіцяй зовнішні дії. Для ролі viewer — тільки довідка. \
+MCP-інструменти з мутаціями або створенням/видаленням notebooks/sources не використовуй; \
+для NotebookLM дозволені тільки читання, список notebooks і запити до наявних джерел."
+
+if [ -n "$PREFERRED_KB" ]; then
+  PREFERRED_KB_TEXT=$(echo "$PREFERRED_KB" | jq -r '"Обраний MCP-конектор: \(.name) (\(.mcp_server))" + (if .library then ", бібліотека: \(.library)" else "" end) + "."')
+  INSTR="$INSTR
+
+$PREFERRED_KB_TEXT Використовуй саме це джерело як пріоритетне. Якщо в доступному контексті \
+немає відповіді з цього джерела — чесно скажи, що потрібен запит до обраного MCP."
+
+  if [ "$(echo "$PREFERRED_KB" | jq -r '.mcp_server // empty')" = "notebooklm-selection" ]; then
+    INSTR="$INSTR
+
+Для NotebookLM MCP спочатку знайди релевантний notebook, потім став питання через \
+читальний інструмент `notebook_query`. Не створюй, не перейменовуй, не видаляй notebooks \
+і не додавай/не видаляй sources."
+  fi
+fi
 
 if [ "$GROUNDED" = "true" ]; then
   CONTEXT=$(echo "$TOPHITS" | jq -r '.[] | "[\(.library)/\(.docId)] \(.title)\n\(.snippet)\n"')
@@ -71,11 +96,20 @@ PROMPT=$(echo "$PAYLOAD" | jq -r --arg instr "$INSTR" '
 OUT=$(mktemp); trap 'rm -f "$OUT"' EXIT
 MODEL_ARG=()
 [ -n "${CODEX_MODEL:-}" ] && MODEL_ARG=(-m "$CODEX_MODEL")
+MCP_ARG=()
+if [ "$PREFERRED_KB_ID" = "notebooklm-selection" ] \
+  || [ "$(echo "${PREFERRED_KB:-{}}" | jq -r '.mcp_server // empty' 2>/dev/null || true)" = "notebooklm-selection" ]; then
+  MCP_ARG=(
+    -c 'mcp_servers.notebooklm-selection.command="npx"'
+    -c "mcp_servers.notebooklm-selection.args=[\"-y\",\"$NOTEBOOKLM_MCP_PACKAGE\",\"start\"]"
+    -c 'mcp_servers.notebooklm-selection.startup_timeout_sec=120'
+  )
+fi
 
 # --sandbox read-only: модель не виконує команд; -o кладе фінальну відповідь у файл.
 # Безпечне розгортання порожнього масиву під set -u (bash 3.2 на macOS).
 set +e
-codex exec "$PROMPT" ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} --sandbox read-only -o "$OUT" \
+codex exec "$PROMPT" ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} ${MCP_ARG[@]+"${MCP_ARG[@]}"} --sandbox read-only -o "$OUT" \
   >>/tmp/kvz-codex.log 2>&1
 RC=$?
 set -e

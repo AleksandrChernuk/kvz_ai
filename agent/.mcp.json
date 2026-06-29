@@ -1,11 +1,19 @@
 {
-  "_comment": "MCP-сервери оркестратора. Ключі тут = knowledge_bases.mcp_server у БД. У проді воркер ходить до конекторів через ContextForge (MCP_GATEWAY_URL); локально/для розробки можна спавнити stdio-сервер напряму, як kb-docs нижче. Майбутні конектори: Google Drive, Bitrix24, web search, email.",
+  "_comment": "MCP-сервери оркестратора. Ключі тут = knowledge_bases.mcp_server у БД. У проді воркер ходить до конекторів через ContextForge (MCP_GATEWAY_URL); локально/для розробки можна спавнити stdio-сервер напряму. Реальні Google/NotebookLM сесії живуть тільки на хості воркера/конектора.",
   "mcpServers": {
     "kb-docs": {
       "command": "node",
       "args": ["connectors/kb-docs/dist/server.js"],
       "env": {
         "KB_DOCS_DIR": "connectors/kb-docs/data"
+      }
+    },
+    "notebooklm-selection": {
+      "command": "npx",
+      "args": ["-y", "notebooklm-mcp-server@3.0.7", "start"],
+      "env": {
+        "NOTEBOOKLM_CONNECTOR_CLASS": "read-only-kb",
+        "NOTEBOOKLM_CONNECTOR_PURPOSE": "selection"
       }
     }
   }

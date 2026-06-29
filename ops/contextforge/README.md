@@ -51,15 +51,40 @@ Materialize these worker runtime values from 1Password:
 ```text
 MCP_GATEWAY_URL=http://127.0.0.1:4444
 MCP_GATEWAY_TOKEN=<same value as CF_AUTH_TOKEN>
+NOTEBOOKLM_MCP_PACKAGE=notebooklm-mcp-server@3.0.7
 ```
 
 In `agent/.mcp.json`, connector keys (`knowledge_bases.mcp_server`) point at the
 gateway route instead of spawning a local process, e.g. the gateway exposes each
 registered connector under a stable path the orchestrator calls with the token.
 
+## NotebookLM selection connector
+
+The `notebooklm-selection` key is registered in `agent/.mcp.json` and in
+`knowledge_bases` by migration `022_seed_notebooklm_selection.sql`.
+
+Runtime auth is interactive and must happen under the same Linux user/profile
+that runs the worker or connector container:
+
+```bash
+npx -y notebooklm-mcp-server@3.0.7 auth
+```
+
+Use a dedicated Google account, not a personal admin account. Share only the
+notebooks needed for selection with that account. The browser session is local
+runtime state and must not be copied into git, env files, logs, docs, or memory.
+
+The upstream unofficial server exposes both query and mutation tools. In kvz-ai
+it is registered as a read-only KB connector: agents are instructed to use
+`notebook_list` / `notebook_query` only. Before broad production rollout, put a
+thin allowlist wrapper or gateway policy in front of it so mutation tools such as
+notebook/source create/delete are physically unavailable.
+
 ## Least-privilege checklist for live systems
 
 - 1C / Bitrix: create a dedicated user with **read-only** access to only the
   needed objects — never an admin account.
+- NotebookLM: create a dedicated Google account/profile with access only to the
+  specific notebooks needed by this connector.
 - Keep connectors **read-only by default**; enable writes per-connector, consciously.
 - Every gateway call is audit-logged (who / role / which tool) — keep it on.

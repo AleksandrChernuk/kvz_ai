@@ -62,12 +62,10 @@ export interface TaskPayload {
   user_message: string
   user_role: UserRole
   preferred_agent?: AgentType
+  preferred_knowledge_base?: KnowledgeBaseRef
   thread_context?: Message[]
   available_agents?: Pick<AgentCatalogItem, "key" | "name" | "description">[]
-  available_knowledge_bases?: Pick<
-    KnowledgeBase,
-    "name" | "description" | "mcp_server"
-  >[]
+  available_knowledge_bases?: KnowledgeBaseRef[]
   metadata?: Record<string, unknown>
 }
 
@@ -168,6 +166,13 @@ export interface KnowledgeBase {
   allowed_roles: UserRole[]
   enabled: boolean
   created_at: string
+}
+
+export type KnowledgeBaseRef = Pick<
+  KnowledgeBase,
+  "id" | "name" | "description" | "mcp_server"
+> & {
+  library?: string | null
 }
 
 export interface AgentCatalogItem {
