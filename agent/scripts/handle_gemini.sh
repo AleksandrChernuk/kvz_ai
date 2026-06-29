@@ -94,7 +94,10 @@ if [ -z "$ANSWER" ] && command -v claude >/dev/null; then
   fi
 fi
 
-[ -n "$ANSWER" ] || { echo "немає доступного виконавця знань (gemini/claude)" >&2; exit 1; }
+if [ -z "$ANSWER" ]; then
+  ANSWER="Зараз не можу сформувати відповідь: виконавець знань тимчасово недоступний або вичерпав ліміт сесії. Спробуйте ще раз трохи пізніше."
+  MODEL_USED="unavailable"
+fi
 
 if [ "$GROUNDED" = "true" ]; then
   STEPS=$(jq -c -n --argjson s "$SOURCES" --arg m "$MODEL_USED" \

@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation"
 
+import { getOrCreateProfile } from "@/lib/ensure-profile"
 import { createClient } from "@/lib/supabase/server"
-import type { Profile } from "@/types/database"
 import { AppSidebar } from "@/components/layout/AppSidebar"
+import { MissingProfilePanel } from "@/components/layout/MissingProfilePanel"
 import {
   SidebarInset,
   SidebarProvider,
@@ -24,14 +25,10 @@ export default async function DashboardLayout({
     redirect("/login")
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .single<Profile>()
+  const profile = await getOrCreateProfile(supabase, user)
 
   if (!profile) {
-    redirect("/login")
+    return <MissingProfilePanel />
   }
 
   return (

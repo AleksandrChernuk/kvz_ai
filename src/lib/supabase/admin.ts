@@ -1,7 +1,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
-// Service-role клієнт: обходить RLS. ТІЛЬКИ для server-side коду,
-// викликаного воркером (оркестратором) після перевірки verifyWorker().
+// Service-role клієнт: обходить RLS. Тільки для server-side коду після
+// окремої перевірки довіри (worker token, admin session або verified user).
 // Ніколи не імпортувати в клієнтські компоненти.
 export function createAdminClient() {
   return createSupabaseClient(
