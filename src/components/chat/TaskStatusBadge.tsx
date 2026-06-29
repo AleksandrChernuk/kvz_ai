@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import {
   CheckCircle2,
   Loader2,
@@ -27,6 +27,11 @@ type State = {
 export function TaskStatusBadge({ taskId }: { taskId: string }) {
   const [state, setState] = useState<State | null>(null)
   const [acting, setActing] = useState(false)
+  // Унікальний суфікс на кожен інстанс: одне завдання може мати кілька бейджів
+  // (повідомлення юзера й відповідь асистента поділяють той самий task_id), а
+  // Supabase-realtime забороняє два канали з однаковим іменем → інакше падіння
+  // "cannot add postgres_changes callbacks ... after subscribe()".
+  const uid = useId()
 
   async function decide(action: "approve" | "reject") {
     setActing(true)
@@ -61,7 +66,7 @@ export function TaskStatusBadge({ taskId }: { taskId: string }) {
       })
 
     const channel = supabase
-      .channel(`task:${taskId}`)
+      .channel(`task:${taskId}:${uid}`)
       .on(
         "postgres_changes",
         {
@@ -86,7 +91,7 @@ export function TaskStatusBadge({ taskId }: { taskId: string }) {
       active = false
       supabase.removeChannel(channel)
     }
-  }, [taskId])
+  }, [taskId, uid])
 
   if (!state) return null
 
