@@ -45,9 +45,9 @@ echo "$out" | jq -e '.raw_result.sub_results | map(.status=="ok") | all' >/dev/n
 echo "$out" | jq -e '.steps | length >= 3' >/dev/null 2>&1 \
   && pass "steps містять план + провенанс" || die "steps неповні"
 
-# 3. Незворотна дія в кроці → requires_approval=true ТА крок НЕ виконано
+# 3. Незворотна дія (запис у Bitrix) → requires_approval=true ТА крок НЕ виконано
 #    (fail-closed: гейт людини спрацьовує ДО виконання незворотної дії).
-out=$(run "порахуй вагу та відправ ціну клієнту" 2>/dev/null)
+out=$(run "порахуй вагу та запиши угоду в bitrix" 2>/dev/null)
 echo "$out" | jq -e '.requires_approval == true' >/dev/null 2>&1 \
   && pass "незворотний крок → requires_approval" || die "requires_approval не виставлено"
 # Незворотний крок s2 має лишитись held (не делеговано виконавцю).

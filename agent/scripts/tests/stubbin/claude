@@ -6,8 +6,8 @@ args="$*"
 input=$(cat)
 
 if [[ "$args" == *планувальник* ]]; then
-  if [[ "$input" == *ціну* ]]; then
-    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"gemini","prompt":"відправ ціну клієнту","depends_on":["s1"]}]}'
+  if [[ "$input" == *bitrix* || "$input" == *угод* ]]; then
+    plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[]},{"id":"s2","executor":"gemini","prompt":"запиши угоду в bitrix","depends_on":["s1"]}]}'
   elif [[ "$input" == *перевір* ]]; then
     # крок s1 декларує validation, що НЕ проходить (value поза межами) → step failed
     plan='{"steps":[{"id":"s1","executor":"codex","prompt":"порахуй вагу","depends_on":[],"validation":{"kind":"weight","value":-1,"unit":"kg"}},{"id":"s2","executor":"gemini","prompt":"підбери обладнання","depends_on":["s1"]}]}'
