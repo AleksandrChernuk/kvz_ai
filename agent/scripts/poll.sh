@@ -94,6 +94,8 @@ process_one() {
   approved_result=$(echo "$task" | jq -c '.result // empty')
   log "задача $task_id"
 
+  checkpoint "$task_id" "Задачу захоплено воркером" "Перевіряю розмір контексту"
+
   if [ -n "$approved_at" ]; then
     if [ -z "$approved_result" ] || [ "$approved_result" = "null" ]; then
       log "задача $task_id: підтверджена, але approved result відсутній"
@@ -132,6 +134,8 @@ process_one() {
     return 0
   fi
 
+  checkpoint "$task_id" "Контекст вміщується у ліміт" "Завантажую доступні агенти та бази знань"
+
   user_role=$(echo "$trimmed" | jq -r '.user_role // "viewer"')
 
   set +e
@@ -154,7 +158,7 @@ process_one() {
     --argjson kbs "$allowed_kbs" \
     '. + {available_agents: $agents, available_knowledge_bases: $kbs}')
 
-  checkpoint "$task_id" "Задачу захоплено, token gate пройдено" "Виклик LLM-обробника"
+  checkpoint "$task_id" "Доступи завантажено" "Запускаю агента"
 
   set +e
   result=$(echo "$trimmed" | "$HANDLER" 2>>/tmp/kvz-worker-handler.log)
@@ -165,6 +169,8 @@ process_one() {
     fail_task "$task_id" "Помилка обробника (див. лог воркера)" true
     return 0
   fi
+
+  checkpoint "$task_id" "Агент повернув відповідь" "Перевіряю результат"
 
   # Детермінований фільтр (НЕ залежить від ШІ). Якщо handler додав
   # result.validation з полем kind — прогоняємо математичну/форматну перевірку.
@@ -192,6 +198,7 @@ process_one() {
   local needs_approval
   needs_approval=$(echo "$result" | jq -r '.requires_approval // false')
   if [ "$needs_approval" = "true" ] && [ -z "$approved_at" ]; then
+    checkpoint "$task_id" "Виявлено незворотну дію" "Чекаю підтвердження людини"
     if request_approval "$task_id" "$result"; then
       log "задача $task_id: очікує підтвердження людини"
     else
@@ -200,6 +207,8 @@ process_one() {
     fi
     return 0
   fi
+
+  checkpoint "$task_id" "Перевірки пройдено" "Готую відповідь у чаті"
 
   complete_task "$task_id" "$result" || {
     log "задача $task_id: complete не пройшов"

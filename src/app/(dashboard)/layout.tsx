@@ -3,12 +3,10 @@ import { redirect } from "next/navigation"
 import { getOrCreateProfile } from "@/lib/ensure-profile"
 import { createClient } from "@/lib/supabase/server"
 import { AppSidebar } from "@/components/layout/AppSidebar"
+import { ChatControlsProvider } from "@/components/chat/ChatControlsContext"
+import { DashboardAppBar } from "@/components/layout/DashboardAppBar"
 import { MissingProfilePanel } from "@/components/layout/MissingProfilePanel"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 
 export default async function DashboardLayout({
   children,
@@ -32,14 +30,16 @@ export default async function DashboardLayout({
   }
 
   return (
-    <SidebarProvider>
-      <AppSidebar profile={profile} />
-      <SidebarInset>
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger />
-        </header>
-        <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
-      </SidebarInset>
+    <SidebarProvider className="h-dvh min-h-0 overflow-hidden">
+      <ChatControlsProvider>
+        <AppSidebar profile={profile} />
+        <SidebarInset className="min-h-0 overflow-hidden">
+          <DashboardAppBar />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {children}
+          </div>
+        </SidebarInset>
+      </ChatControlsProvider>
     </SidebarProvider>
   )
 }

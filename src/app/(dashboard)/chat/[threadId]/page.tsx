@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { loadThreadsWithPreview } from "@/lib/threads"
 import type { Message, Profile, Thread } from "@/types/database"
-import { ThreadList } from "@/components/chat/ThreadList"
+import { ChatSidebarState } from "@/components/chat/ChatSidebarState"
 import { ChatWindow } from "@/components/chat/ChatWindow"
 
 export default async function ThreadPage({
@@ -47,8 +47,8 @@ export default async function ThreadPage({
   const threads = await loadThreadsWithPreview(supabase, user.id)
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <ThreadList threads={threads} activeThreadId={threadId} />
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      <ChatSidebarState threads={threads} activeThreadId={threadId} />
       <ChatWindow
         initialMessages={(messages ?? []).reverse()}
         threadId={threadId}

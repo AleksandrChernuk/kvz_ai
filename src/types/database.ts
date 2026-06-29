@@ -61,6 +61,7 @@ export interface Message {
 export interface TaskPayload {
   user_message: string
   user_role: UserRole
+  preferred_agent?: AgentType
   thread_context?: Message[]
   available_agents?: Pick<AgentCatalogItem, "key" | "name" | "description">[]
   available_knowledge_bases?: Pick<

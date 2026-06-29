@@ -91,8 +91,8 @@ export function ChatWindow({ initialMessages, threadId, userRole }: Props) {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <ScrollArea className="flex-1">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
           {messages.length === 0 ? (
             <p className="mt-12 text-center text-sm text-muted-foreground">
@@ -105,13 +105,15 @@ export function ChatWindow({ initialMessages, threadId, userRole }: Props) {
         </div>
       </ScrollArea>
 
-      <div className="mx-auto w-full max-w-3xl">
-        <InputBar
-          threadId={threadId}
-          userRole={userRole}
-          onSend={addOptimistic}
-          onSendFailed={removeOptimistic}
-        />
+      <div className="shrink-0 border-t bg-background px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <div className="mx-auto w-full max-w-3xl">
+          <InputBar
+            threadId={threadId}
+            userRole={userRole}
+            onSend={addOptimistic}
+            onSendFailed={removeOptimistic}
+          />
+        </div>
       </div>
     </div>
   )

@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { BrandLogo } from "@/components/layout/BrandLogo"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -51,8 +52,9 @@ export default function LoginPage() {
       className="w-full max-w-sm"
     >
       <Card>
-      <CardHeader>
-        <CardTitle className="text-2xl">KVZ AI</CardTitle>
+      <CardHeader className="justify-items-center text-center">
+        <BrandLogo className="mx-auto w-40" priority />
+        <CardTitle className="sr-only">KVZ AI</CardTitle>
         <CardDescription>Увійдіть, щоб продовжити</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

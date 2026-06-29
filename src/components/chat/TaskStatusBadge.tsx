@@ -11,15 +11,53 @@ import {
 import { toast } from "sonner"
 
 import { createClient } from "@/lib/supabase/client"
-import type { AgentType, Task, TaskStatus } from "@/types/database"
+import type {
+  AgentType,
+  Task,
+  TaskCheckpoint,
+  TaskStatus,
+} from "@/types/database"
 import { cn } from "@/lib/utils"
 import { AGENT_LABELS } from "@/lib/task-meta"
 
 type State = {
   status: TaskStatus
   agent: AgentType | null
+  checkpoint: TaskCheckpoint | null
   error: string | null
   retry_count: number
+}
+
+function cleanProgressText(value: string | null | undefined) {
+  return value?.trim().replace(/\s+/g, " ") ?? ""
+}
+
+function progressLabel(state: State) {
+  const pending = cleanProgressText(state.checkpoint?.pending_work)
+  const summary = cleanProgressText(state.checkpoint?.progress_summary)
+  const agentName = state.agent ? AGENT_LABELS[state.agent] : "агента"
+
+  if (state.status === "pending") {
+    return state.retry_count > 0
+      ? `Повторна спроба ${state.retry_count}: чекаю в черзі`
+      : "У черзі: чекаю вільного воркера"
+  }
+
+  if (state.status !== "running") return ""
+
+  if (pending.includes("LLM-обробника")) {
+    return `Звертаюся до ${agentName}`
+  }
+
+  if (pending) return pending
+
+  if (summary.includes("token gate пройдено")) {
+    return "Перевірив ліміт контексту, запускаю агента"
+  }
+
+  if (summary) return summary
+
+  return state.agent ? `${agentName}: виконую задачу` : "Запускаю обробку"
 }
 
 // Realtime-підписка: всі бейджі мультиплексуються через один websocket,
@@ -58,9 +96,11 @@ export function TaskStatusBadge({ taskId }: { taskId: string }) {
 
     supabase
       .from("tasks")
-      .select("status, agent, error, retry_count")
+      .select("status, agent, checkpoint, error, retry_count")
       .eq("id", taskId)
-      .single<Pick<Task, "status" | "agent" | "error" | "retry_count">>()
+      .single<
+        Pick<Task, "status" | "agent" | "checkpoint" | "error" | "retry_count">
+      >()
       .then(({ data }) => {
         if (active && data) setState(data)
       })
@@ -80,6 +120,7 @@ export function TaskStatusBadge({ taskId }: { taskId: string }) {
           setState({
             status: t.status,
             agent: t.agent,
+            checkpoint: t.checkpoint,
             error: t.error,
             retry_count: t.retry_count,
           })
@@ -102,16 +143,14 @@ export function TaskStatusBadge({ taskId }: { taskId: string }) {
       return (
         <span className={cn(base, "text-muted-foreground")}>
           <Loader2 className="size-3.5 animate-spin" />
-          {state.retry_count > 0
-            ? `Повторна спроба ${state.retry_count}…`
-            : "Обробляється…"}
+          {progressLabel(state)}
         </span>
       )
     case "running":
       return (
         <span className={cn(base, "text-muted-foreground")}>
           <Loader2 className="size-3.5 animate-spin" />
-          {state.agent ? `${AGENT_LABELS[state.agent]}…` : "Виконується…"}
+          {progressLabel(state)}
         </span>
       )
     case "awaiting_approval":
