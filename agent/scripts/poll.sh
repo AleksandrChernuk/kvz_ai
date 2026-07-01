@@ -96,6 +96,7 @@ process_one() {
 
   checkpoint "$task_id" "Задачу захоплено воркером" "Перевіряю розмір контексту"
 
+  local is_resume=0
   if [ -n "$approved_at" ]; then
     if [ -z "$approved_result" ] || [ "$approved_result" = "null" ]; then
       log "задача $task_id: підтверджена, але approved result відсутній"
@@ -109,13 +110,31 @@ process_one() {
       return 0
     fi
 
-    if complete_task "$task_id" "$approved_result"; then
-      log "задача $task_id: готово після підтвердження"
+    # Orchestrated preview з планом → резюме: перезапускаємо handler з тим
+    # самим погодженим планом, щоб притримані (held) кроки реально виконались
+    # (не просто повторно доставити людині старий preview — там незворотна
+    # дія ще НЕ була зроблена). Немає плану (не orchestrated) → нема що
+    # резюмити, старий шлях: довіряємо preview як фінальному результату.
+    local resume_plan resume_sub
+    resume_plan=$(echo "$approved_result" | jq -c '.raw_result.plan // empty')
+    resume_sub=$(echo "$approved_result" | jq -c '.raw_result.sub_results // empty')
+    if [ "$(echo "$approved_result" | jq -r '.agent_used // empty')" = "orchestrated" ] \
+       && [ -n "$resume_plan" ] && [ "$resume_plan" != "null" ]; then
+      log "задача $task_id: резюмую після підтвердження (виконую притримані кроки)"
+      is_resume=1
+      payload=$(echo "$payload" | jq -c --argjson plan "$resume_plan" --argjson sub "${resume_sub:-[]}" \
+        '. + {resume: {plan: $plan, sub_results: $sub}}')
+      # Падаємо крізь звичайний конвеєр нижче (token gate → доступи → handler →
+      # фільтр → approval-check → complete) з payload, що несе .resume.
     else
-      log "задача $task_id: complete підтвердженого результату не пройшов"
-      fail_task "$task_id" "Не вдалося завершити підтверджений результат" false
+      if complete_task "$task_id" "$approved_result"; then
+        log "задача $task_id: готово після підтвердження (без резюме — немає плану)"
+      else
+        log "задача $task_id: complete підтвердженого результату не пройшов"
+        fail_task "$task_id" "Не вдалося завершити підтверджений результат" false
+      fi
+      return 0
     fi
-    return 0
   fi
 
   # Token gate: обрізаємо контекст до ліміту; якщо саме повідомлення
@@ -205,6 +224,16 @@ process_one() {
       log "задача $task_id: не вдалося поставити на підтвердження"
       fail_task "$task_id" "Не вдалося поставити на підтвердження" true
     fi
+    return 0
+  fi
+
+  # Резюме після підтвердження НЕ має право знову зупинитись на approval —
+  # план уже погоджено людиною. Якщо handler повернув requires_approval=true
+  # тут, це порушення інваріанту (бag у резюме-шляху), а не легітимний новий
+  # гейт: не завершуємо мовчки з непідтвердженою незворотною дією всередині.
+  if [ "$is_resume" = "1" ] && [ "$needs_approval" = "true" ]; then
+    log "задача $task_id: резюме після підтвердження знову вимагає approval — ескалюю"
+    fail_task "$task_id" "Резюме після підтвердження повторно зупинилось на approval (внутрішня помилка)" false
     return 0
   fi
 

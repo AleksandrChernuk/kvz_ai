@@ -39,21 +39,42 @@ cp agent/.env.example agent/.env   # fill API_URL, WORKER_TOKEN
 ./agent/scripts/poll.sh            # or --once on a cron / a systemd service
 ```
 
-The brain (Claude) only routes: code/technical → Codex, knowledge → Gemini.
-Fail-soft — until `codex`/`gemini` are logged in, tasks fall back to Claude
-answering, so nothing breaks; wire them in to activate the real executors.
+The brain (Claude) routes to Codex (the only active executor today — `handle_gemini.sh`
+is kept in the tree but `handle_task.sh` no longer dispatches to it). Fail-soft —
+until `codex` is logged in, tasks fall back to Claude answering, so nothing breaks.
 
-Also run the watchdog on a schedule (else stale tasks never fail):
-`curl -X POST -H "Authorization: Bearer $WORKER_TOKEN" $API_URL/api/tasks/watchdog -d '{"timeout_minutes":5}'`
+**Also schedule the watchdog independently of `poll.sh`** — without it, a worker
+that crashes mid-task leaves that task `running` forever (nobody ever calls
+`/api/tasks/watchdog` again). A bare one-off `curl` is not enough; it needs to run
+on a recurring schedule, separate from the worker process itself:
+
+- **macOS (no systemd)** — use `launchd`, not `cron` (TCC restrictions make
+  plain cron unreliable for network calls on modern macOS):
+  ```bash
+  cp agent/scripts/com.kvz-ai.watchdog.plist.example \
+     ~/Library/LaunchAgents/com.kvzai.watchdog.plist
+  # edit the /ABSOLUTE/PATH/TO/kvz-ai placeholders inside, then:
+  launchctl load ~/Library/LaunchAgents/com.kvzai.watchdog.plist
+  ```
+  Runs `agent/scripts/watchdog.sh` every 60s; logs to `agent/watchdog.log`.
+- **Linux VPS** — prefer the systemd units already in `ops/systemd/` (installed
+  automatically by `ops/deploy/deploy-release.sh`): `kvz-ai-watchdog.timer` +
+  `.service`, independent of the `kvz-ai-worker.service` process.
+- **Anything else (Railway/Fly.io/Render/etc.)** — add `agent/scripts/watchdog.sh`
+  as that platform's own scheduled/cron job (reads `API_URL`/`WORKER_TOKEN` from
+  `agent/.env`, same file `poll.sh` uses).
 
 ## 1. Supabase Cloud
 
 1. [supabase.com](https://supabase.com) → New project. Copy from **Settings → API**:
    `Project URL`, `anon public`, `service_role`.
 2. **SQL Editor** → run every `supabase/migrations/*.sql` **in numeric order**
-   (001 → highest; currently **020**). 019–020 add the `orchestrated` agent value
-   and exempt it from the access gate — without them decomposed tasks fail at
-   completion.
+   (001 → highest; currently **023** — check `ls supabase/migrations/` for the
+   real latest, this number will go stale again). 019–020 add the `orchestrated`
+   agent value and exempt it from the access gate — without them decomposed
+   tasks fail at completion. 021 is required for new-user signup to work at all
+   on Supabase Cloud. 023 is required for the approval-resume flow (held
+   irreversible steps actually executing after human approval) to work.
 3. **Authentication → Add user** → then in SQL Editor:
    `update profiles set role='admin' where user_id=(select id from auth.users where email='you@example.com');`
 4. Realtime is on by default; the migrations add `messages`/`tasks` to the

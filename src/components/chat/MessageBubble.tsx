@@ -30,28 +30,41 @@ export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user"
 
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
-      <div className="flex max-w-[80%] flex-col">
+    <div className="flex flex-col">
+      <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
         <div
           className={cn(
-            "rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words",
-            isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-foreground"
+            "flex max-w-[80%] flex-col",
+            isUser ? "items-end" : "items-start"
           )}
         >
-          {message.content}
+          <div
+            className={cn(
+              "rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words",
+              isUser
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-foreground"
+            )}
+          >
+            {message.content}
+          </div>
+          <div
+            className={cn(
+              "mt-1 flex items-center gap-2 text-[10px] text-muted-foreground",
+              isUser ? "justify-end" : "justify-start"
+            )}
+          >
+            <MessageTime iso={message.created_at} />
+          </div>
         </div>
-        <div
-          className={cn(
-            "mt-1 flex items-center gap-2 text-[10px] text-muted-foreground",
-            isUser ? "justify-end" : "justify-start"
-          )}
-        >
-          <MessageTime iso={message.created_at} />
-        </div>
-        {message.task_id && <TaskStatusBadge taskId={message.task_id} />}
       </div>
+      {message.task_id && (
+        <div className="flex justify-start">
+          <div className="max-w-[80%]">
+            <TaskStatusBadge taskId={message.task_id} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

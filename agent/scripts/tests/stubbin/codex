@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Стаб codex CLI: пише детерміновану відповідь у файл, заданий через -o.
+# CODEX_HIT_FILE (опц.) — фіксує кожен виклик, щоб тест міг довести
+# ідемпотентність резюме (крок, що вже мав ok/failed, не викликається знову).
 set -euo pipefail
+[ -n "${CODEX_HIT_FILE:-}" ] && echo hit >> "$CODEX_HIT_FILE"
 out=""; prev=""
 for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
 [ -n "$out" ] && printf 'CODEX: розрахунок виконано' > "$out"

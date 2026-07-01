@@ -111,6 +111,47 @@ echo "$out" | jq -e '.requires_approval == false' >/dev/null 2>&1 \
 echo "$out" | jq -e '[.raw_result.sub_results[].status] | all(. == "held") | not' >/dev/null 2>&1 \
   && pass "кроки поради виконано (не held)" || die "порадні кроки помилково притримано"
 
+# 10. Резюме після підтвердження (approval-resume, H1): попередній preview
+#     (крок s2 — held, запис у bitrix) резюмиться з тим самим планом і тепер
+#     реально виконує s2; s1 (вже ok) НЕ перевиконується (ідемпотентність);
+#     requires_approval знято; план не перепланований.
+out=$(run "порахуй вагу та запиши угоду в bitrix" 2>/dev/null)
+plan=$(echo "$out" | jq -c '.raw_result.plan')
+sub=$(echo "$out" | jq -c '.raw_result.sub_results')
+
+CH=$(mktemp)
+resumed=$(jq -n --arg m "порахуй вагу та запиши угоду в bitrix" --argjson a "$AGENTS" \
+    --argjson plan "$plan" --argjson sub "$sub" \
+  '{user_message:$m, user_role:"engineer", available_agents:$a, available_knowledge_bases:[],
+    resume:{plan:$plan, sub_results:$sub}}' \
+  | CODEX_HIT_FILE="$CH" "$SCRIPTS_DIR/handle_task.sh" 2>/dev/null)
+hits=$(wc -l < "$CH" | tr -d ' '); rm -f "$CH"
+
+echo "$resumed" | jq -e '.requires_approval == false' >/dev/null 2>&1 \
+  && pass "резюме: requires_approval знято" || die "резюме: requires_approval лишився true"
+echo "$resumed" | jq -e '.raw_result.sub_results[] | select(.id=="s2") | .status == "ok"' >/dev/null 2>&1 \
+  && pass "резюме: раніше held-крок s2 реально виконано" || die "резюме: s2 не виконано"
+echo "$resumed" | jq -e '.raw_result.sub_results[] | select(.id=="s2") | .answer | length > 0' >/dev/null 2>&1 \
+  && pass "резюме: s2 має відповідь" || die "резюме: s2 без відповіді"
+[ "$hits" = "1" ] \
+  && pass "резюме: лише 1 виклик codex (s1 не перевиконано)" \
+  || die "резюме: очікувався 1 виклик codex для s2, отримано $hits"
+echo "$resumed" | jq -e --argjson p "$plan" '.raw_result.plan == $p' >/dev/null 2>&1 \
+  && pass "резюме: план не перепланований (той самий об'єкт)" || die "резюме: план змінився"
+
+# 11. Гейт токенів синтезу (M1) + чесний fallback для провалених кроків (M2):
+#     TOKEN_LIMIT=1 занадто малий навіть для самого user_message → синтез-LLM
+#     НЕ викликається (fallback без крашу); той самий TOKEN_LIMIT валить обидва
+#     sub-payload-гейти (кроки failed); детермінований fallback явно позначає
+#     провал кожного кроку, а не мовчки лишає порожній bullet.
+out=$(TOKEN_LIMIT=1 run "порахуй вагу та підбери обладнання" 2>/dev/null)
+echo "$out" | jq -e '.answer | length > 0' >/dev/null 2>&1 \
+  && pass "гейт синтезу: fallback не крашнувся, відповідь непорожня" || die "гейт синтезу: відповідь порожня"
+echo "$out" | jq -e '.requires_approval == false' >/dev/null 2>&1 \
+  && pass "гейт синтезу: requires_approval лишився false" || die "гейт синтезу: неочікуваний approval"
+echo "$out" | jq -e '.answer | test("не вдалося виконати")' >/dev/null 2>&1 \
+  && pass "fallback чесно позначає провалені кроки (M2)" || die "fallback приховує провал кроку"
+
 if [ "$fail" -ne 0 ]; then
   echo "orchestrate_test: ПРОВАЛЕНО" >&2
   exit 1

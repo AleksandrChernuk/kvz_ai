@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd-таймер для watchdog.sh на локальному/macOS воркері (без systemd).
+  Незалежний від poll.sh: якщо воркер впав посеред задачі, ця задача все одно
+  звільниться протягом WATCHDOG_TIMEOUT_MINUTES (default 5 хв), а не висітиме
+  "running" назавжди до ручного рестарту воркера.
+
+  Встановлення (Label узгоджено з наявним com.kvzai.orchestrator, що вже
+  ганяє poll.sh через launchd на цій машині):
+    cp agent/scripts/com.kvz-ai.watchdog.plist.example \
+       ~/Library/LaunchAgents/com.kvzai.watchdog.plist
+    # відредагуй <string>/ABSOLUTE/PATH/TO/kvz-ai</string> нижче на реальний шлях
+    launchctl load ~/Library/LaunchAgents/com.kvzai.watchdog.plist
+
+  Перевірка: launchctl list | grep kvzai; лог — agent/watchdog.log.
+  Зупинка:   launchctl unload ~/Library/LaunchAgents/com.kvzai.watchdog.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kvzai.watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>bash</string>
+    <string>/ABSOLUTE/PATH/TO/kvz-ai/agent/scripts/watchdog.sh</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/ABSOLUTE/PATH/TO/kvz-ai/agent/watchdog.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/ABSOLUTE/PATH/TO/kvz-ai/agent/watchdog.log</string>
+</dict>
+</plist>

@@ -59,10 +59,13 @@ task is re-queued with the reason for the subagent to fix. Validators: `weight`,
 
 ### Approval gate (step 6) — human confirmation before irreversible actions
 
-For actions that go outward (price to client, `.dxf` to the laser, payment), the
-handler sets `result.requires_approval = true`. The task moves to
-`awaiting_approval` instead of completing; the user sees Підтвердити/Відхилити in
-chat. Reject → `cancelled`.
+The gate currently fires only for writes into 1С/Bitrix (`is_irreversible()` in
+`handle_task.sh` — text match on `1с/1c/bitrix/бітрікс/битрикс`). Price-to-client,
+payment, and laser/`.dxf`-to-machine dispatch are NOT gated today (no write
+executor exists for them yet — see `agent/scripts/AGENTS.md` routing table).
+When the handler flags a step this way, `result.requires_approval = true`. The
+task moves to `awaiting_approval` instead of completing; the user sees
+Підтвердити/Відхилити in chat. Reject → `cancelled`.
 
 **Orchestrated path is fail-closed (important):** in decompose mode the handler
 detects irreversible sub-steps (and all their dependents) BEFORE execution and
@@ -70,15 +73,22 @@ detects irreversible sub-steps (and all their dependents) BEFORE execution and
 result is a preview listing the held actions with `requires_approval:true`. So
 the gate fires *before* any irreversible action, not after.
 
-**Known limitation (do not rely on yet):** on approve, `poll.sh` re-completes the
-stored preview result and does **not** re-run the handler — so held sub-steps are
-**not auto-resumed/executed** after approval. This is safe only while the active
-executor is read-only (codex `--sandbox read-only`). Before
-enabling any write-capable executor (Bitrix/email/`.dxf`-to-machine), wire
-resume-after-approval (re-invoke the handler in resume mode + rework migration
-014's exact-match binding for orchestrated tasks). For the single-shot path the
-handler still produces a preview and the irreversible step would run at
-`complete_task` time as before.
+**Approve → resume (real execution, not just re-delivery):** on approve, `poll.sh`
+re-invokes `handle_task.sh` with `payload.resume = { plan, sub_results }` taken
+from the approved preview's `raw_result`. The handler reuses the SAME plan
+(no re-planning), seeds already-`ok`/`failed` sub-results from the prior pass
+(no re-running reversible work), and actually runs the previously-held steps —
+they are approved now, so `is_irreversible()` is not re-applied. Result is
+re-synthesized and completed with `requires_approval:false`. Migration
+023 relaxes the approval-result binding to accept this: same `agent_used`,
+same `raw_result.plan` (deep jsonb equality), no longer requiring approval —
+the literal answer text is allowed to differ from the preview, since the
+preview never contained the held step's actual output. If a resumed result
+somehow still comes back with `requires_approval:true`, `poll.sh` treats that
+as an internal-error escalation (permanent fail), not a legitimate re-hold —
+the plan was already approved once. For the single-shot (non-orchestrated)
+path there is no held step to resume (`handle_codex.sh` never sets
+`requires_approval`; only decompose mode does).
 
 **Never update `tasks` status directly.** Always use the endpoints — they call atomic PostgreSQL functions.
 

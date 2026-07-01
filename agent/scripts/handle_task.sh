@@ -41,6 +41,15 @@ USER_MESSAGE=$(printf '%s' "$PAYLOAD" | jq -r '.user_message // ""')
 AVAILABLE_AGENTS=$(printf '%s' "$PAYLOAD" | jq -c '.available_agents // []')
 PREFERRED_AGENT=$(printf '%s' "$PAYLOAD" | jq -r '.preferred_agent // empty')
 
+# Резюме після підтвердження людини (poll.sh передає raw_result підтвердженого
+# preview як .resume): той самий план виконується ЗНОВУ, але цього разу
+# притримані (held) кроки реально запускаються — approval уже отримано.
+# Планувальник ПОВТОРНО не викликається (план фіксований, погоджений людиною).
+RESUME_PLAN=$(printf '%s' "$PAYLOAD" | jq -c '.resume.plan // empty')
+RESUME_SUB=$(printf '%s' "$PAYLOAD" | jq -c '.resume.sub_results // empty')
+[ "$RESUME_PLAN" != "null" ] || RESUME_PLAN=""
+[ "$RESUME_SUB" != "null" ] || RESUME_SUB=""
+
 # Доступ ролі до виконавця codex.
 codex_allowed() {
   printf '%s' "$AVAILABLE_AGENTS" | jq -e '.[] | select(.key == "codex")' >/dev/null 2>&1
@@ -103,7 +112,9 @@ merged_validation() { # $1 = step JSON
 
 # --- Рішення режиму: пробуємо план; якщо ≤1 кроку — простий режим -------------
 PLAN=""
-if [ "${ORCH_DISABLE:-0}" != "1" ]; then
+if [ -n "$RESUME_PLAN" ]; then
+  PLAN="$RESUME_PLAN"
+elif [ "${ORCH_DISABLE:-0}" != "1" ]; then
   set +e
   PLAN=$(printf '%s' "$PAYLOAD" | "$SCRIPT_DIR/plan_task.sh" 2>>/tmp/kvz-planner.log)
   set -e
@@ -139,6 +150,21 @@ fi
 # СКЛАДЕНИЙ режим: оркестрація під-задач
 # ============================================================================
 WORKDIR=$(mktemp -d); trap 'rm -rf "$WORKDIR"' EXIT
+
+# Резюме: кроки, що ВЖЕ мали фінальний статус (ok/failed) у попередньому
+# проході, не виконуємо повторно — сідуємо їхній готовий результат у WORKDIR
+# напряму. Раніше held-кроки сюди НЕ потрапляють (нижче стають RUN_IDS).
+RESUMED_DONE_IDS=" "
+if [ -n "$RESUME_SUB" ]; then
+  while IFS= read -r rid; do
+    [ -z "$rid" ] && continue
+    rst=$(printf '%s' "$RESUME_SUB" | jq -r --arg id "$rid" '.[] | select(.id==$id) | .status // empty')
+    if [ "$rst" = "ok" ] || [ "$rst" = "failed" ]; then
+      printf '%s' "$RESUME_SUB" | jq -c --arg id "$rid" '.[] | select(.id==$id)' > "$WORKDIR/$rid.json"
+      RESUMED_DONE_IDS+="$rid "
+    fi
+  done <<< "$(printf '%s' "$PLAN" | jq -r '.steps[].id')"
+fi
 
 # Виконання одного кроку: будуємо під-payload (prompt + контекст залежностей),
 # делегуємо виконавцю, проганяємо детермінований фільтр (якщо крок його декларує),
@@ -301,37 +327,45 @@ ALL_IDS=$(printf '%s' "$PLAN" | jq -r '.steps[].id')
 # ІНВАРІАНТ: HELD_IDS — рядок із пробілами-роздільниками (" s2 s3 "); членство
 # перевіряємо через `case "$HELD_IDS" in *" $id "*`. НЕ прибирай початковий
 # пробіл і пробіли навколо id — інакше зламається межа слова (s1 vs s10).
+# На резюме (RESUME_PLAN непорожній) гейт НЕ рахуємо заново — план уже
+# погоджено людиною, раніше held-кроки тепер мають реально виконатись.
 HELD_IDS=" "
-while IFS= read -r id; do
-  [ -z "$id" ] && continue
-  hp=$(printf '%s' "$PLAN" | jq -r --arg id "$id" '.steps[]|select(.id==$id)|.prompt')
-  if is_irreversible "$hp"; then HELD_IDS+="$id "; fi
-done <<< "$ALL_IDS"
-# Поширюємо притримання на залежних нащадків до стабілізації (граф ацикличний).
-changed=1
-while [ "$changed" = "1" ]; do
-  changed=0
+if [ -z "$RESUME_PLAN" ]; then
   while IFS= read -r id; do
     [ -z "$id" ] && continue
-    case "$HELD_IDS" in *" $id "*) continue ;; esac
-    while IFS= read -r d; do
-      [ -z "$d" ] && continue
-      case "$HELD_IDS" in *" $d "*) HELD_IDS+="$id "; changed=1; break ;; esac
-    done <<< "$(printf '%s' "$PLAN" | jq -r --arg id "$id" '.steps[]|select(.id==$id)|(.depends_on//[])[]')"
+    hp=$(printf '%s' "$PLAN" | jq -r --arg id "$id" '.steps[]|select(.id==$id)|.prompt')
+    if is_irreversible "$hp"; then HELD_IDS+="$id "; fi
   done <<< "$ALL_IDS"
-done
+  # Поширюємо притримання на залежних нащадків до стабілізації (граф ацикличний).
+  changed=1
+  while [ "$changed" = "1" ]; do
+    changed=0
+    while IFS= read -r id; do
+      [ -z "$id" ] && continue
+      case "$HELD_IDS" in *" $id "*) continue ;; esac
+      while IFS= read -r d; do
+        [ -z "$d" ] && continue
+        case "$HELD_IDS" in *" $d "*) HELD_IDS+="$id "; changed=1; break ;; esac
+      done <<< "$(printf '%s' "$PLAN" | jq -r --arg id "$id" '.steps[]|select(.id==$id)|(.depends_on//[])[]')"
+    done <<< "$ALL_IDS"
+  done
+fi
 
 REQUIRES_APPROVAL=false
 if [ -n "$(printf '%s' "$HELD_IDS" | tr -d '[:space:]')" ]; then
   REQUIRES_APPROVAL=true
 fi
 
-done_ids=" "
-# Виконуємо лише НЕ притримані кроки (їхні залежності — теж не притримані).
+# На резюме — стартуємо з уже готових (ok/failed) кроків попереднього проходу,
+# щоб раунд-планувальник не запускав їх повторно (ідемпотентність резюме).
+done_ids="$RESUMED_DONE_IDS"
+# Виконуємо лише НЕ притримані й ще НЕ готові (з резюме) кроки.
 RUN_IDS=""
 while IFS= read -r id; do
   [ -z "$id" ] && continue
-  case "$HELD_IDS" in *" $id "*) ;; *) RUN_IDS+="$id"$'\n' ;; esac
+  case "$HELD_IDS" in *" $id "*) continue ;; esac
+  case "$RESUMED_DONE_IDS" in *" $id "*) continue ;; esac
+  RUN_IDS+="$id"$'\n'
 done <<< "$ALL_IDS"
 remaining=$(printf '%s' "$RUN_IDS" | sed '/^$/d')
 
@@ -401,20 +435,62 @@ done <<< "$ALL_IDS"
 # від held) свідомо ЛИШАЮТЬСЯ у вході синтезу — синтезатор має чесно зазначити
 # провал, а не приховати його.
 SYN_RESULTS=$(printf '%s' "$SUB_RESULTS" | jq -c '[.[] | select(.status != "held")]')
+
+# Ре-гейт токенів ПЕРЕД синтезом: широкий fan-out (багато кроків/довгі
+# відповіді) не має пробивати ліміт без детермінованого запобіжника —
+# poll.sh гейтить лише оригінальний user_message, а конкатенація
+# sub_results тут ніде раніше не рахувалась. Перевикористовуємо ТОЙ САМИЙ
+# check_token_limit.py --trim (не окрему евристику): відповіді під-кроків
+# мапимо як thread_context-повідомлення (найраніший крок = найстаріше
+# повідомлення), обрізка відкидає найстаріші першими — так само, як для
+# звичайного чат-контексту.
+SYN_GATE_PAYLOAD=$(printf '%s' "$SYN_RESULTS" | jq -c --arg m "$USER_MESSAGE" \
+  '{user_message: $m, thread_context: [.[] | {content: (.answer // "")}]}')
+set +e
+SYN_GATE_TRIMMED=$(printf '%s' "$SYN_GATE_PAYLOAD" | python3 "$SCRIPT_DIR/check_token_limit.py" --trim --limit "${TOKEN_LIMIT:-5000}" 2>/dev/null)
+syn_gate_rc=$?
+set -e
+
+SYN_TRUNCATED=false
+if [ "$syn_gate_rc" -eq 0 ]; then
+  syn_kept=$(printf '%s' "$SYN_GATE_TRIMMED" | jq '.thread_context | length')
+  syn_total=$(printf '%s' "$SYN_RESULTS" | jq 'length')
+  if [ "$syn_kept" -lt "$syn_total" ]; then
+    SYN_TRUNCATED=true
+    # Лишаємо $syn_kept НАЙНОВІШИХ кроків — найстаріші вже відкинуті гейтом вище.
+    SYN_RESULTS=$(printf '%s' "$SYN_RESULTS" | jq -c --argjson k "$syn_kept" '.[length - $k:]')
+  fi
+fi
+
 SYN_INPUT=$(jq -c -n --arg m "$USER_MESSAGE" --argjson sr "$SYN_RESULTS" \
   '{user_message: $m, sub_results: $sr}')
 
-set +e
-FINAL_ANSWER=$(printf '%s' "$SYN_INPUT" | "$SCRIPT_DIR/synthesize.sh" 2>>/tmp/kvz-synth.log)
-SRC=$?
-set -e
+SRC=1
+FINAL_ANSWER=""
+if [ "$syn_gate_rc" -eq 0 ]; then
+  set +e
+  FINAL_ANSWER=$(printf '%s' "$SYN_INPUT" | "$SCRIPT_DIR/synthesize.sh" 2>>/tmp/kvz-synth.log)
+  SRC=$?
+  set -e
+fi
+# syn_gate_rc != 0: навіть відкинувши всі під-кроки контекст не вліз
+# (сам user_message завеликий) — синтез-LLM не викликаємо, одразу fallback.
 
 if [ "$SRC" -ne 0 ] || [ -z "$FINAL_ANSWER" ]; then
   # Fail-soft: детермінований fallback — склеюємо виконані під-відповіді.
+  # Провал (failed) позначаємо явно, а не мовчки ховаємо порожній .answer
+  # (інакше провалений крок просто зникає з відповіді людині — нечесно).
   FINAL_ANSWER=$(printf '%s' "$SYN_RESULTS" | jq -r '
-    [.[] | "• " + (.answer // "(крок без відповіді)")] | join("\n\n")')
+    [.[] | if .status == "failed"
+           then "• Крок " + .id + ": не вдалося виконати (провал перевірки або виконавця)"
+           else "• " + (if (.answer // "") == "" then "(крок без відповіді)" else .answer end)
+           end] | join("\n\n")')
 fi
 [ -n "$FINAL_ANSWER" ] || FINAL_ANSWER="Не вдалося сформувати відповідь з під-результатів."
+
+if [ "$SYN_TRUNCATED" = "true" ]; then
+  FINAL_ANSWER="$FINAL_ANSWER"$'\n\n'"⚠️ Частину проміжних кроків не включено в синтез — перевищено ліміт контексту (${TOKEN_LIMIT:-5000} токенів)."
+fi
 
 # Притримані незворотні дії — окремим блоком, явно як НЕ виконані.
 if [ "$REQUIRES_APPROVAL" = "true" ]; then
