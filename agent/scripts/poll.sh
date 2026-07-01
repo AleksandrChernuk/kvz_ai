@@ -153,29 +153,29 @@ process_one() {
     return 0
   fi
 
-  checkpoint "$task_id" "Контекст вміщується у ліміт" "Завантажую доступні агенти та бази знань"
+  checkpoint "$task_id" "Контекст вміщується у ліміт" "Завантажую доступні агенти та конектори"
 
   user_role=$(echo "$trimmed" | jq -r '.user_role // "viewer"')
 
   set +e
   agents_payload=$(api_get "/api/agents?role=$user_role")
   agents_rc=$?
-  kbs_payload=$(api_get "/api/kb?role=$user_role")
-  kbs_rc=$?
+  connectors_payload=$(api_get "/api/connectors?role=$user_role")
+  connectors_rc=$?
   set -e
 
-  if [ "$agents_rc" -ne 0 ] || [ "$kbs_rc" -ne 0 ]; then
+  if [ "$agents_rc" -ne 0 ] || [ "$connectors_rc" -ne 0 ]; then
     log "задача $task_id: не вдалося отримати матрицю доступів для ролі $user_role"
     fail_task "$task_id" "Не вдалося отримати доступні агенти/сервіси" true
     return 0
   fi
 
   allowed_agents=$(echo "$agents_payload" | jq -c '[.agents[] | {key, name, description}]')
-  allowed_kbs=$(echo "$kbs_payload" | jq -c '[.knowledge_bases[] | {id, name, description, mcp_server, library: (.mcp_config.library // null)}]')
+  allowed_connectors=$(echo "$connectors_payload" | jq -c '[.connectors[] | {id, name, description, mcp_server, library: (.mcp_config.library // null), notebook_id: (.mcp_config.notebook_id // null), notebook_url: (.mcp_config.notebook_url // null)}]')
   trimmed=$(echo "$trimmed" | jq -c \
     --argjson agents "$allowed_agents" \
-    --argjson kbs "$allowed_kbs" \
-    '. + {available_agents: $agents, available_knowledge_bases: $kbs}')
+    --argjson connectors "$allowed_connectors" \
+    '. + {available_agents: $agents, available_connectors: $connectors}')
 
   checkpoint "$task_id" "Доступи завантажено" "Запускаю агента"
 

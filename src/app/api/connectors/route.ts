@@ -6,10 +6,10 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isUserRole, parseRoles } from "@/lib/validate"
 import { verifyWorker } from "@/lib/worker-auth"
-import type { KnowledgeBase, KnowledgeBaseRoleAccess, Profile } from "@/types/database"
+import type { Connector, ConnectorRoleAccess, Profile } from "@/types/database"
 
-// GET /api/kb — бази знань, доступні ролі юзера (RLS фільтрує сама).
-// Воркер з WORKER_TOKEN бачить усі (для маршрутизації задач).
+// GET /api/connectors — конектори, доступні ролі юзера.
+// Воркер з WORKER_TOKEN бачить усі увімкнені (для маршрутизації задач).
 export async function GET(req: Request) {
   const roleParam = new URL(req.url).searchParams.get("role")
 
@@ -22,45 +22,45 @@ export async function GET(req: Request) {
       }
 
       const { data: access, error: accessError } = await admin
-        .from("knowledge_base_role_access")
-        .select("knowledge_base_id")
+        .from("connector_role_access")
+        .select("connector_id")
         .eq("role", roleParam)
-        .returns<Pick<KnowledgeBaseRoleAccess, "knowledge_base_id">[]>()
+        .returns<Pick<ConnectorRoleAccess, "connector_id">[]>()
 
       if (accessError) {
         return apiError(accessError)
       }
 
-      const ids = (access ?? []).map((row) => row.knowledge_base_id)
+      const ids = (access ?? []).map((row) => row.connector_id)
       if (ids.length === 0) {
-        return NextResponse.json({ knowledge_bases: [] })
+        return NextResponse.json({ connectors: [] })
       }
 
       const { data, error } = await admin
-        .from("knowledge_bases")
+        .from("connectors")
         .select("*")
         .in("id", ids)
         .eq("enabled", true)
         .order("name")
-        .returns<KnowledgeBase[]>()
+        .returns<Connector[]>()
 
       if (error) {
         return apiError(error)
       }
 
-      return NextResponse.json({ knowledge_bases: data ?? [] })
+      return NextResponse.json({ connectors: data ?? [] })
     }
 
     const { data, error } = await admin
-      .from("knowledge_bases")
+      .from("connectors")
       .select("*")
       .eq("enabled", true)
       .order("name")
-      .returns<KnowledgeBase[]>()
+      .returns<Connector[]>()
     if (error) {
       return apiError(error)
     }
-    return NextResponse.json({ knowledge_bases: data ?? [] })
+    return NextResponse.json({ connectors: data ?? [] })
   }
 
   const supabase = await createClient()
@@ -71,21 +71,52 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Не авторизовано" }, { status: 401 })
   }
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("user_id", user.id)
+    .single<Pick<Profile, "role">>()
+
+  if (!profile) {
+    return NextResponse.json({ error: "Профіль не знайдено" }, { status: 403 })
+  }
+
+  // Пікер у чаті — це список для використання, не екран управління. Тому навіть
+  // адмін бачить лише увімкнені та привʼязані до його ролі конектори. Фільтруємо
+  // явно, бо RLS-політика admin віддає адміну ВСІ рядки (в т.ч. вимкнені й
+  // непривʼязані), і покладатися на неї тут не можна.
+  const { data: access, error: accessError } = await supabase
+    .from("connector_role_access")
+    .select("connector_id")
+    .eq("role", profile.role)
+    .returns<Pick<ConnectorRoleAccess, "connector_id">[]>()
+
+  if (accessError) {
+    return apiError(accessError)
+  }
+
+  const ids = (access ?? []).map((row) => row.connector_id)
+  if (ids.length === 0) {
+    return NextResponse.json({ connectors: [] })
+  }
+
   const { data, error } = await supabase
-    .from("knowledge_bases")
+    .from("connectors")
     .select("*")
+    .in("id", ids)
+    .eq("enabled", true)
     .order("name")
-    .returns<KnowledgeBase[]>()
+    .returns<Connector[]>()
 
   if (error) {
     return apiError(error)
   }
 
-  return NextResponse.json({ knowledge_bases: data ?? [] })
+  return NextResponse.json({ connectors: data ?? [] })
 }
 
-// POST /api/kb — додати базу знань.
-// Гейт через role_features: потрібна фіча 'kb_manage' (за сідом — тільки admin).
+// POST /api/connectors — додати конектор.
+// Гейт через role_features: потрібна фіча 'connectors_manage' (за сідом — тільки admin).
 export async function POST(req: Request) {
   const supabase = await createClient()
   const {
@@ -101,9 +132,9 @@ export async function POST(req: Request) {
     .eq("user_id", user.id)
     .single<Pick<Profile, "role">>()
 
-  if (!profile || !(await hasFeature(supabase, profile.role, "kb_manage"))) {
+  if (!profile || !(await hasFeature(supabase, profile.role, "connectors_manage"))) {
     return NextResponse.json(
-      { error: "Недостатньо прав (фіча kb_manage)" },
+      { error: "Недостатньо прав (фіча connectors_manage)" },
       { status: 403 }
     )
   }
@@ -134,23 +165,23 @@ export async function POST(req: Request) {
   }
 
   const { data, error } = await supabase
-    .rpc("create_knowledge_base_with_access", {
+    .rpc("create_connector_with_access", {
       p_name: name,
       p_mcp_server: mcp_server,
       p_description: description,
       p_mcp_config: body?.mcp_config ?? {},
       p_allowed_roles: allowed_roles,
     })
-    .single<KnowledgeBase>()
+    .single<Connector>()
 
   if (error || !data) {
-    return apiError(error, 500, "Не вдалося створити базу знань")
+    return apiError(error, 500, "Не вдалося створити конектор")
   }
 
-  return NextResponse.json({ knowledge_base: data })
+  return NextResponse.json({ connector: data })
 }
 
-// PATCH /api/kb — admin: оновити KB/сервіс і звʼязки з ролями.
+// PATCH /api/connectors — admin: оновити конектор і звʼязки з ролями.
 export async function PATCH(req: Request) {
   const supabase = await createClient()
   const {
@@ -166,9 +197,9 @@ export async function PATCH(req: Request) {
     .eq("user_id", user.id)
     .single<Pick<Profile, "role">>()
 
-  if (!profile || !(await hasFeature(supabase, profile.role, "kb_manage"))) {
+  if (!profile || !(await hasFeature(supabase, profile.role, "connectors_manage"))) {
     return NextResponse.json(
-      { error: "Недостатньо прав (фіча kb_manage)" },
+      { error: "Недостатньо прав (фіча connectors_manage)" },
       { status: 403 }
     )
   }
@@ -212,7 +243,7 @@ export async function PATCH(req: Request) {
   }
 
   const { data, error } = await supabase
-    .rpc("update_knowledge_base_with_access", {
+    .rpc("update_connector_with_access", {
       p_id: id,
       p_name: name,
       p_description: description,
@@ -220,11 +251,11 @@ export async function PATCH(req: Request) {
       p_enabled: enabled,
       p_allowed_roles: allowedRoles ?? null,
     })
-    .single<KnowledgeBase>()
+    .single<Connector>()
 
   if (error || !data) {
-    return apiError(error, 500, "Не вдалося оновити базу знань")
+    return apiError(error, 500, "Не вдалося оновити конектор")
   }
 
-  return NextResponse.json({ knowledge_base: data })
+  return NextResponse.json({ connector: data })
 }

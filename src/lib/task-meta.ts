@@ -27,7 +27,7 @@ export const AGENT_LABELS: Record<AgentType, string> = {
   drive: "Google Drive",
   bitrix: "Bitrix24",
   email: "Email",
-  kb: "База знань",
+  connector: "Конектор",
   orchestrated: "Оркестратор",
 }
 

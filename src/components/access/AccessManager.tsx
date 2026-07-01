@@ -8,8 +8,8 @@ import { ACCESS_ROLES, FEATURE_CATALOG } from "@/lib/access"
 import type {
   AgentCatalogItem,
   AgentType,
-  KnowledgeBase,
-  KnowledgeBaseRoleAccess,
+  Connector,
+  ConnectorRoleAccess,
   RoleAgentAccess,
   RoleFeature,
 } from "@/types/database"
@@ -31,8 +31,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 type Props = {
   initialAgents: AgentCatalogItem[]
   initialRoleAgentAccess: RoleAgentAccess[]
-  initialKnowledgeBases: KnowledgeBase[]
-  initialKnowledgeBaseRoleAccess: KnowledgeBaseRoleAccess[]
+  initialConnectors: Connector[]
+  initialConnectorRoleAccess: ConnectorRoleAccess[]
   initialRoleFeatures: RoleFeature[]
 }
 
@@ -91,31 +91,31 @@ function upsertRoleFeature(rows: RoleFeature[], next: RoleFeature) {
 export function AccessManager({
   initialAgents,
   initialRoleAgentAccess,
-  initialKnowledgeBases,
-  initialKnowledgeBaseRoleAccess,
+  initialConnectors,
+  initialConnectorRoleAccess,
   initialRoleFeatures,
 }: Props) {
   const [agents, setAgents] = useState(initialAgents)
   const [roleAgentAccess, setRoleAgentAccess] = useState(initialRoleAgentAccess)
-  const [knowledgeBases, setKnowledgeBases] = useState(initialKnowledgeBases)
-  const [knowledgeBaseRoleAccess, setKnowledgeBaseRoleAccess] = useState(
-    initialKnowledgeBaseRoleAccess
+  const [connectors, setConnectors] = useState(initialConnectors)
+  const [connectorRoleAccess, setConnectorRoleAccess] = useState(
+    initialConnectorRoleAccess
   )
   const [roleFeatures, setRoleFeatures] = useState(initialRoleFeatures)
   const [loadingKey, setLoadingKey] = useState<string | null>(null)
 
-  const kbRoles = useMemo(() => {
+  const connectorRoles = useMemo(() => {
     const map = new Map<string, Set<UserRole>>()
-    for (const kb of knowledgeBases) {
-      map.set(kb.id, new Set(kb.allowed_roles))
+    for (const connector of connectors) {
+      map.set(connector.id, new Set(connector.allowed_roles))
     }
-    for (const row of knowledgeBaseRoleAccess) {
-      const roles = map.get(row.knowledge_base_id) ?? new Set<UserRole>()
+    for (const row of connectorRoleAccess) {
+      const roles = map.get(row.connector_id) ?? new Set<UserRole>()
       roles.add(row.role)
-      map.set(row.knowledge_base_id, roles)
+      map.set(row.connector_id, roles)
     }
     return map
-  }, [knowledgeBases, knowledgeBaseRoleAccess])
+  }, [connectors, connectorRoleAccess])
 
   function hasAgentAccess(agent: AgentType, role: UserRole) {
     return (
@@ -178,22 +178,37 @@ export function AccessManager({
     }
   }
 
-  async function toggleKnowledgeBase(kb: KnowledgeBase) {
-    const key = `kb:${kb.id}:enabled`
+  function upsertConnectorAccess(
+    rows: ConnectorRoleAccess[],
+    connectorId: string,
+    roles: UserRole[]
+  ) {
+    return [
+      ...rows.filter((row) => row.connector_id !== connectorId),
+      ...roles.map((role) => ({
+        connector_id: connectorId,
+        role,
+        created_at: new Date().toISOString(),
+      })),
+    ]
+  }
+
+  async function toggleConnector(connector: Connector) {
+    const key = `connector:${connector.id}:enabled`
     setLoadingKey(key)
     try {
-      const res = await fetch("/api/kb", {
+      const res = await fetch("/api/connectors", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: kb.id, enabled: !kb.enabled }),
+        body: JSON.stringify({ id: connector.id, enabled: !connector.enabled }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setKnowledgeBases((current) =>
-        current.map((item) => (item.id === kb.id ? data.knowledge_base : item))
+      setConnectors((current) =>
+        current.map((item) => (item.id === connector.id ? data.connector : item))
       )
     } catch (error) {
-      toast.error("Не вдалося оновити сервіс", {
+      toast.error("Не вдалося оновити конектор", {
         description: error instanceof Error ? error.message : String(error),
       })
     } finally {
@@ -201,8 +216,8 @@ export function AccessManager({
     }
   }
 
-  async function toggleKnowledgeBaseRole(kb: KnowledgeBase, role: UserRole) {
-    const roles = new Set(kbRoles.get(kb.id) ?? [])
+  async function toggleConnectorRole(connector: Connector, role: UserRole) {
+    const roles = new Set(connectorRoles.get(connector.id) ?? [])
     if (roles.has(role)) {
       roles.delete(role)
     } else {
@@ -215,29 +230,26 @@ export function AccessManager({
     }
 
     const allowed_roles = [...roles]
-    const key = `kb:${kb.id}:${role}`
+    const key = `connector:${connector.id}:${role}`
     setLoadingKey(key)
     try {
-      const res = await fetch("/api/kb", {
+      const res = await fetch("/api/connectors", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: kb.id, allowed_roles }),
+        body: JSON.stringify({ id: connector.id, allowed_roles }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setKnowledgeBases((current) =>
-        current.map((item) => (item.id === kb.id ? data.knowledge_base : item))
+      setConnectors((current) =>
+        current.map((item) =>
+          item.id === connector.id ? data.connector : item
+        )
       )
-      setKnowledgeBaseRoleAccess((current) => [
-        ...current.filter((row) => row.knowledge_base_id !== kb.id),
-        ...allowed_roles.map((allowedRole) => ({
-          knowledge_base_id: kb.id,
-          role: allowedRole,
-          created_at: new Date().toISOString(),
-        })),
-      ])
+      setConnectorRoleAccess((current) =>
+        upsertConnectorAccess(current, connector.id, allowed_roles)
+      )
     } catch (error) {
-      toast.error("Не вдалося оновити доступ до сервісу", {
+      toast.error("Не вдалося оновити доступ до конектора", {
         description: error instanceof Error ? error.message : String(error),
       })
     } finally {
@@ -343,7 +355,7 @@ export function AccessManager({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Сервіс / KB</TableHead>
+                <TableHead>Конектор</TableHead>
                 <TableHead className="w-36">MCP</TableHead>
                 <TableHead className="w-28">Стан</TableHead>
                 {ACCESS_ROLES.map((role) => (
@@ -354,48 +366,52 @@ export function AccessManager({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {knowledgeBases.length === 0 && (
+              {connectors.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={ACCESS_ROLES.length + 3}
                     className="text-center text-muted-foreground"
                   >
-                    Сервіси ще не додані
+                    Конектори ще не додані
                   </TableCell>
                 </TableRow>
               )}
-              {knowledgeBases.map((kb) => (
-                <TableRow key={kb.id}>
+              {connectors.map((connector) => (
+                <TableRow key={connector.id}>
                   <TableCell>
                     <div className="flex flex-col gap-1">
-                      <span className="font-medium">{kb.name}</span>
-                      {kb.description && (
+                      <span className="font-medium">{connector.name}</span>
+                      {connector.description && (
                         <span className="max-w-xl text-wrap text-xs text-muted-foreground">
-                          {kb.description}
+                          {connector.description}
                         </span>
                       )}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{kb.mcp_server}</Badge>
+                    <Badge variant="outline">{connector.mcp_server}</Badge>
                   </TableCell>
                   <TableCell>
                     <Button
                       type="button"
-                      variant={kb.enabled ? "secondary" : "outline"}
+                      variant={connector.enabled ? "secondary" : "outline"}
                       size="sm"
-                      onClick={() => toggleKnowledgeBase(kb)}
-                      disabled={loadingKey === `kb:${kb.id}:enabled`}
+                      onClick={() => toggleConnector(connector)}
+                      disabled={loadingKey === `connector:${connector.id}:enabled`}
                     >
-                      {kb.enabled ? "Увімкнено" : "Вимкнено"}
+                      {connector.enabled ? "Увімкнено" : "Вимкнено"}
                     </Button>
                   </TableCell>
                   {ACCESS_ROLES.map((role) => (
                     <TableCell key={role} className="text-center">
                       <AccessButton
-                        enabled={kbRoles.get(kb.id)?.has(role) ?? false}
-                        disabled={loadingKey === `kb:${kb.id}:${role}`}
-                        onClick={() => toggleKnowledgeBaseRole(kb, role)}
+                        enabled={
+                          connectorRoles.get(connector.id)?.has(role) ?? false
+                        }
+                        disabled={
+                          loadingKey === `connector:${connector.id}:${role}`
+                        }
+                        onClick={() => toggleConnectorRole(connector, role)}
                       />
                     </TableCell>
                   ))}

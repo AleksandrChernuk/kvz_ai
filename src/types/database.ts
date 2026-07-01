@@ -13,7 +13,7 @@ export type AgentType =
   | "drive"
   | "bitrix"
   | "email"
-  | "kb"
+  | "connector"
   | "orchestrated"
 export type MessageRole = "user" | "assistant" | "system"
 export type AgentState =
@@ -62,10 +62,10 @@ export interface TaskPayload {
   user_message: string
   user_role: UserRole
   preferred_agent?: AgentType
-  preferred_knowledge_base?: KnowledgeBaseRef
+  preferred_connector?: ConnectorRef
   thread_context?: Message[]
   available_agents?: Pick<AgentCatalogItem, "key" | "name" | "description">[]
-  available_knowledge_bases?: KnowledgeBaseRef[]
+  available_connectors?: ConnectorRef[]
   metadata?: Record<string, unknown>
 }
 
@@ -156,8 +156,8 @@ export interface AgentMail {
   created_at: string
 }
 
-// База знань: MCP-конектор (NotebookLM-подібні та інші), доступ за ролями
-export interface KnowledgeBase {
+// MCP-конектор (NotebookLM-подібні та інші), доступ за ролями
+export interface Connector {
   id: string
   name: string
   description: string | null
@@ -168,8 +168,8 @@ export interface KnowledgeBase {
   created_at: string
 }
 
-export type KnowledgeBaseRef = Pick<
-  KnowledgeBase,
+export type ConnectorRef = Pick<
+  Connector,
   "id" | "name" | "description" | "mcp_server"
 > & {
   library?: string | null
@@ -190,8 +190,8 @@ export interface RoleAgentAccess {
   created_at: string
 }
 
-export interface KnowledgeBaseRoleAccess {
-  knowledge_base_id: string
+export interface ConnectorRoleAccess {
+  connector_id: string
   role: UserRole
   created_at: string
 }
@@ -215,8 +215,8 @@ export type Database = {
       agent_mail: { Row: AgentMail }
       agents: { Row: AgentCatalogItem }
       role_agent_access: { Row: RoleAgentAccess }
-      knowledge_bases: { Row: KnowledgeBase }
-      knowledge_base_role_access: { Row: KnowledgeBaseRoleAccess }
+      connectors: { Row: Connector }
+      connector_role_access: { Row: ConnectorRoleAccess }
       role_features: { Row: RoleFeature }
     }
   }

@@ -3,8 +3,8 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import type {
   AgentCatalogItem,
-  KnowledgeBase,
-  KnowledgeBaseRoleAccess,
+  Connector,
+  ConnectorRoleAccess,
   Profile,
   RoleAgentAccess,
   RoleFeature,
@@ -31,8 +31,8 @@ export default async function AccessPage() {
   const [
     agentsResult,
     roleAgentAccessResult,
-    knowledgeBasesResult,
-    knowledgeBaseRoleAccessResult,
+    connectorsResult,
+    connectorRoleAccessResult,
     roleFeaturesResult,
   ] = await Promise.all([
     supabase.from("agents").select("*").order("name").returns<AgentCatalogItem[]>(),
@@ -42,14 +42,14 @@ export default async function AccessPage() {
       .order("agent")
       .returns<RoleAgentAccess[]>(),
     supabase
-      .from("knowledge_bases")
+      .from("connectors")
       .select("*")
       .order("name")
-      .returns<KnowledgeBase[]>(),
+      .returns<Connector[]>(),
     supabase
-      .from("knowledge_base_role_access")
+      .from("connector_role_access")
       .select("*")
-      .returns<KnowledgeBaseRoleAccess[]>(),
+      .returns<ConnectorRoleAccess[]>(),
     supabase
       .from("role_features")
       .select("*")
@@ -60,8 +60,8 @@ export default async function AccessPage() {
   const error =
     agentsResult.error ??
     roleAgentAccessResult.error ??
-    knowledgeBasesResult.error ??
-    knowledgeBaseRoleAccessResult.error ??
+    connectorsResult.error ??
+    connectorRoleAccessResult.error ??
     roleFeaturesResult.error
 
   if (error) {
@@ -84,8 +84,8 @@ export default async function AccessPage() {
       <AccessManager
         initialAgents={agentsResult.data ?? []}
         initialRoleAgentAccess={roleAgentAccessResult.data ?? []}
-        initialKnowledgeBases={knowledgeBasesResult.data ?? []}
-        initialKnowledgeBaseRoleAccess={knowledgeBaseRoleAccessResult.data ?? []}
+        initialConnectors={connectorsResult.data ?? []}
+        initialConnectorRoleAccess={connectorRoleAccessResult.data ?? []}
         initialRoleFeatures={roleFeaturesResult.data ?? []}
       />
     </div>

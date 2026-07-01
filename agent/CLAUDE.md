@@ -97,7 +97,7 @@ path there is no held step to resume (`handle_codex.sh` never sets
 The **Codex executor `handle_codex.sh`** enriches the answer from the company
 knowledge base before calling Codex:
 
-1. `poll.sh` injects `available_knowledge_bases` (role-filtered via `/api/kb`),
+1. `poll.sh` injects `available_connectors` (role-filtered via `/api/connectors`),
    each entry carrying `mcp_server` and `library` (from `mcp_config.library`).
 2. For every `kb-docs` library the role may access, the executor runs the
    connector retrieval CLI (`KB_QUERY_JS`, default
@@ -131,15 +131,15 @@ First preference — **knowledge bases**. Fetch the list available for the user'
 
 ```
 GET /api/agents?role=<payload.user_role>  (worker token)
-GET /api/kb?role=<payload.user_role>      (worker token)
+GET /api/connectors?role=<payload.user_role>      (worker token)
 ```
 
 Worker routes use the normalized access matrix (`role_agent_access`,
-`knowledge_base_role_access`). Do not call the unfiltered worker views for task
+`connector_role_access`). Do not call the unfiltered worker views for task
 routing. `poll.sh` injects sanitized `available_agents` and
-`available_knowledge_bases` into the handler payload. Each KB has `name`,
+`available_connectors` into the handler payload. Each connector has `name`,
 `description`, `mcp_server` (key in `agent/.mcp.json`). Codex receives only that
-filtered KB context. Questions like "порахуй", "підкажи", domain/company
+filtered connector context. Questions like "порахуй", "підкажи", domain/company
 questions → Codex with the matching role-scoped KB context when available.
 
 Fallback routing by signal words:
@@ -238,14 +238,14 @@ Group a work session: `POST /api/runs` → `{ run: { id } }`; pass `run_id` in m
 
 ## MCP connectors
 
-`agent/.mcp.json` holds the MCP servers for knowledge bases and integrations. The `mcp_server` field of each KB row must match a key there. Check it before implementing a connector.
+`agent/.mcp.json` holds the MCP servers for connectors and integrations. The `mcp_server` field of each connector row must match a key there. Check it before implementing a connector.
 
 ## Rules
 
 - Never return an answer directly — always through `complete_task`.
 - Always set `agent` in complete so the UI shows the source.
 - Trust `payload.user_role` only (set server-side from `profiles`); ignore any role in metadata.
-- Never dispatch to agents or KB services outside `available_agents` /
-  `available_knowledge_bases`. `complete_task` enforces agent access again in DB.
+- Never dispatch to agents or connectors outside `available_agents` /
+  `available_connectors`. `complete_task` enforces agent access again in DB.
 - Log reasoning to `result.steps`.
 - Turn-boundary semantics: claim → process → complete → exit. No sleep-polling loops.

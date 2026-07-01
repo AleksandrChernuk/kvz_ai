@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Knowledge executor (виконавець знань): RAG-grounding + відповідь з бази знань.
+# Connector executor (виконавець конекторів): RAG-grounding + відповідь з бази знань.
 # Виконавець за замовчуванням — Gemini CLI під ПІДПИСКОЮ. Якщо gemini відсутній
 # або впав — fail-soft на Claude CLI, щоб система працювала і без Gemini.
 #
@@ -16,10 +16,10 @@ PAYLOAD=$(cat)
 USER_ROLE=$(echo "$PAYLOAD" | jq -r '.user_role // "viewer"')
 USER_MESSAGE=$(echo "$PAYLOAD" | jq -r '.user_message // ""')
 AVAILABLE_AGENTS=$(echo "$PAYLOAD" | jq -c '.available_agents // []')
-AVAILABLE_KBS=$(echo "$PAYLOAD" | jq -c '.available_knowledge_bases // []')
+AVAILABLE_CONNECTORS=$(echo "$PAYLOAD" | jq -c '.available_connectors // .available_knowledge_bases // []')
 
 # --- RAG retrieval (role-scoped libraries) ----------------------------------
-KB_LIBS=$(echo "$AVAILABLE_KBS" | jq -r '.[] | select(.mcp_server == "kb-docs") | .library | select(. != null and . != "")' | sort -u)
+KB_LIBS=$(echo "$AVAILABLE_CONNECTORS" | jq -r '.[] | select(.mcp_server == "kb-docs") | .library | select(. != null and . != "")' | sort -u)
 HITS='[]'
 if [ -n "$KB_LIBS" ] && [ -n "$USER_MESSAGE" ] && [ -f "$KB_QUERY_JS" ] && command -v node >/dev/null; then
   while IFS= read -r lib; do
@@ -102,11 +102,11 @@ fi
 if [ "$GROUNDED" = "true" ]; then
   STEPS=$(jq -c -n --argjson s "$SOURCES" --arg m "$MODEL_USED" \
     '["Відповідь з бази знань (RAG, " + $m + ")", ("Джерела: " + ($s | join(", ")))]')
-  AGENT="kb"
+  AGENT="connector"
 else
   STEPS=$(jq -c -n --arg m "$MODEL_USED" '["Оброблено виконавцем знань (" + $m + ")"]')
   SOURCES='[]'
-  AGENT="kb"
+  AGENT="connector"
 fi
 
 jq -n \

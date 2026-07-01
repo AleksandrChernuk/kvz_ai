@@ -59,7 +59,25 @@ services:
   # ── MCP connectors ────────────────────────────────────────────────────────
   # Register each connector here. They have NO `ports:` — unreachable from
   # outside and from the app; only the gateway (same `connectors` net) sees them.
-  # Example skeletons, disabled until real connectors exist:
+
+  # NotebookLM — read-only KB/query connector (unofficial notebooklm-mcp).
+  # Read-only is enforced inside the image (NOTEBOOKLM_DISABLED_TOOLS +
+  # NOTEBOOKLM_PROFILE=minimal), so mutation tools are physically unavailable.
+  # Auth is a persistent Chrome profile on the cf_notebooklm_profile volume,
+  # seeded once (see README) — no secrets in env. Needs internet to reach
+  # notebooklm.google.com, so it also joins the `egress` network.
+  notebooklm:
+    image: kvz/notebooklm-mcp:latest
+    build: ../../connectors/notebooklm
+    restart: unless-stopped
+    env_file: ./connectors/notebooklm.env   # read-only runtime config (no secrets)
+    volumes:
+      - cf_notebooklm_profile:/data         # persistent Chrome profile (auth state)
+    networks:
+      - connectors   # reachable by the gateway only
+      - egress       # outbound to notebooklm.google.com
+
+  # Skeletons for the internal-only connectors (no egress network — sealed in):
   #
   # bitrix:
   #   image: kvz/bitrix-mcp:latest
@@ -75,6 +93,7 @@ services:
 
 volumes:
   cf_db:
+  cf_notebooklm_profile:
 
 networks:
   gateway-net:
@@ -82,3 +101,5 @@ networks:
   connectors:
     driver: bridge
     internal: true   # no egress/ingress to the host — connectors are sealed in
+  egress:
+    driver: bridge   # outbound internet for connectors that reach SaaS (NotebookLM)

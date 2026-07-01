@@ -38,7 +38,7 @@ begin
   exception when others then ok := true; end;
   if not ok then raise exception 'A2: save_checkpoint by wrong worker did not raise'; end if;
 
-  perform complete_task(tsk, 'w1', '{"answer":"привіт"}'::jsonb, 'kb');
+  perform complete_task(tsk, 'w1', '{"answer":"привіт"}'::jsonb, 'connector');
   select status into v_status from tasks where id = tsk;
   if v_status <> 'done' then raise exception 'A3: expected done, got %', v_status; end if;
   select count(*) into v_msg from messages
@@ -48,7 +48,7 @@ begin
 
   -- ===== Test B: complete twice (running guard) + empty answer ============
   ok := false;
-  begin perform complete_task(tsk, 'w1', '{"answer":"again"}'::jsonb, 'kb');
+  begin perform complete_task(tsk, 'w1', '{"answer":"again"}'::jsonb, 'connector');
   exception when others then ok := true; end;
   if not ok then raise exception 'B1: re-complete of done task did not raise'; end if;
 
@@ -56,7 +56,7 @@ begin
     values (th, ua, '{"user_message":"x"}') returning id into tsk2;
   perform claim_next_task('w1');
   ok := false;
-  begin perform complete_task(tsk2, 'w1', '{"answer":""}'::jsonb, 'kb');
+  begin perform complete_task(tsk2, 'w1', '{"answer":""}'::jsonb, 'connector');
   exception when others then ok := true; end;
   if not ok then raise exception 'B2: empty-answer completion did not raise'; end if;
   raise notice 'PASS B: running-guard + empty-answer';
@@ -77,12 +77,12 @@ begin
   perform claim_next_task('w1');
   -- completing with a DIFFERENT result than approved must raise (014 binding)
   ok := false;
-  begin perform complete_task(tsk2, 'w1', '{"answer":"DIFFERENT"}'::jsonb, 'kb');
+  begin perform complete_task(tsk2, 'w1', '{"answer":"DIFFERENT"}'::jsonb, 'connector');
   exception when others then ok := true; end;
   if not ok then raise exception 'C3: result-binding mismatch did not raise'; end if;
 
   -- completing with the approved result succeeds
-  perform complete_task(tsk2, 'w1', '{"answer":"preview"}'::jsonb, 'kb');
+  perform complete_task(tsk2, 'w1', '{"answer":"preview"}'::jsonb, 'connector');
   select status into v_status from tasks where id = tsk2;
   if v_status <> 'done' then raise exception 'C4: approved completion failed (%)', v_status; end if;
   raise notice 'PASS C: approval gate + result binding';
@@ -90,7 +90,7 @@ begin
   -- ===== Test D: agent access guard (016) =================================
   -- engineer (ub) must not complete via an agent its role can't access if the
   -- access matrix forbids it. We assert the guard path exists by completing a
-  -- task whose role can access 'kb' (seeded for all roles in 018-adjacent),
+  -- task whose role can access 'connector' (seeded for all roles in 018-adjacent),
   -- and that a null agent is rejected.
   insert into tasks (thread_id, user_id, payload)
     values (th, ua, '{"user_message":"y","user_role":"admin"}') returning id into tsk;

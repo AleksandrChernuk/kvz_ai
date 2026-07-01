@@ -11,8 +11,8 @@ export const FEATURE_CATALOG = [
     group: "core",
   },
   {
-    key: "kb_manage",
-    label: "Керування KB",
+    key: "connectors_manage",
+    label: "Керування конекторами",
     group: "core",
   },
   {
@@ -44,8 +44,8 @@ export const AGENT_CATALOG = [
     label: "Email",
   },
   {
-    key: "kb",
-    label: "Бази знань",
+    key: "connector",
+    label: "Конектори",
   },
 ] as const
 

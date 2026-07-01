@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, Plug, Plus, SendHorizontal } from "lucide-react"
 import { toast } from "sonner"
 
-import type { AgentCatalogItem, AgentType, KnowledgeBase } from "@/types/database"
+import type { AgentCatalogItem, AgentType, Connector } from "@/types/database"
 import type { UserRole } from "@/types/roles"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,31 +28,31 @@ type Props = {
 }
 
 type ChatAgentMode = "auto" | AgentType
-type ChatKnowledgeBaseMode = "auto" | string
+type ChatConnectorMode = "auto" | string
 
 export function InputBar({ threadId, userRole, disabled, onSend, onSendFailed }: Props) {
   const [value, setValue] = useState("")
   const [pending, setPending] = useState(false)
   const [agents, setAgents] = useState<AgentCatalogItem[]>([])
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
+  const [connectors, setConnectors] = useState<Connector[]>([])
   const [agentMode, setAgentMode] = useState<ChatAgentMode>("auto")
-  const [knowledgeBaseMode, setKnowledgeBaseMode] =
-    useState<ChatKnowledgeBaseMode>("auto")
+  const [connectorMode, setConnectorMode] =
+    useState<ChatConnectorMode>("auto")
   const ref = useRef<HTMLTextAreaElement>(null)
 
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.key === agentMode),
     [agentMode, agents]
   )
-  const selectedKnowledgeBase = useMemo(
-    () => knowledgeBases.find((kb) => kb.id === knowledgeBaseMode),
-    [knowledgeBaseMode, knowledgeBases]
+  const selectedConnector = useMemo(
+    () => connectors.find((connector) => connector.id === connectorMode),
+    [connectorMode, connectors]
   )
   const modeLabel = agentMode === "auto" ? "Авто" : (selectedAgent?.name ?? agentMode)
-  const knowledgeBaseLabel =
-    knowledgeBaseMode === "auto"
+  const connectorLabel =
+    connectorMode === "auto"
       ? "Усі доступні"
-      : (selectedKnowledgeBase?.name ?? "Обраний MCP")
+      : (selectedConnector?.name ?? "Обраний MCP")
 
   function autoResize() {
     const el = ref.current
@@ -70,22 +70,22 @@ export function InputBar({ threadId, userRole, disabled, onSend, onSendFailed }:
         if (!res.ok) throw new Error("Не вдалося отримати агентів")
         return res.json() as Promise<{ agents?: AgentCatalogItem[] }>
       }),
-      fetch("/api/kb").then((res) => {
+      fetch("/api/connectors").then((res) => {
         if (!res.ok) throw new Error("Не вдалося отримати MCP-конектори")
-        return res.json() as Promise<{ knowledge_bases?: KnowledgeBase[] }>
+        return res.json() as Promise<{ connectors?: Connector[] }>
       }),
     ])
-      .then(([agentsData, kbData]) => {
+      .then(([agentsData, connectorData]) => {
         if (!active) return
         setAgents(
           (agentsData.agents ?? []).filter((agent) => agent.key !== "orchestrated")
         )
-        setKnowledgeBases(kbData.knowledge_bases ?? [])
+        setConnectors(connectorData.connectors ?? [])
       })
       .catch(() => {
         if (!active) return
         setAgents([])
-        setKnowledgeBases([])
+        setConnectors([])
       })
 
     return () => {
@@ -93,10 +93,10 @@ export function InputBar({ threadId, userRole, disabled, onSend, onSendFailed }:
     }
   }, [])
 
-  function selectKnowledgeBase(id: ChatKnowledgeBaseMode) {
-    setKnowledgeBaseMode(id)
-    if (id !== "auto" && agents.some((agent) => agent.key === "kb")) {
-      setAgentMode("kb")
+  function selectConnector(id: ChatConnectorMode) {
+    setConnectorMode(id)
+    if (id !== "auto" && agents.some((agent) => agent.key === "connector")) {
+      setAgentMode("connector")
     }
   }
 
@@ -117,8 +117,8 @@ export function InputBar({ threadId, userRole, disabled, onSend, onSendFailed }:
           content,
           thread_id: threadId,
           preferred_agent: agentMode === "auto" ? undefined : agentMode,
-          preferred_knowledge_base_id:
-            knowledgeBaseMode === "auto" ? undefined : knowledgeBaseMode,
+          preferred_connector_id:
+            connectorMode === "auto" ? undefined : connectorMode,
         }),
       })
       if (!res.ok) {
@@ -147,7 +147,7 @@ export function InputBar({ threadId, userRole, disabled, onSend, onSendFailed }:
         </span>
         <span className="ml-2">MCP:</span>
         <span className="max-w-40 truncate rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">
-          {knowledgeBaseLabel}
+          {connectorLabel}
         </span>
       </div>
       <div className="flex items-end gap-2">
@@ -186,28 +186,28 @@ export function InputBar({ threadId, userRole, disabled, onSend, onSendFailed }:
             )}
             <DropdownMenuSeparator />
             <DropdownMenuLabel>MCP-конектор</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => selectKnowledgeBase("auto")}>
+            <DropdownMenuItem onSelect={() => selectConnector("auto")}>
               <Plug className="size-4 text-muted-foreground" />
               <span>Усі доступні</span>
-              {knowledgeBaseMode === "auto" && <Check className="ml-auto size-4" />}
+              {connectorMode === "auto" && <Check className="ml-auto size-4" />}
             </DropdownMenuItem>
-            {knowledgeBases.map((kb) => (
+            {connectors.map((connector) => (
               <DropdownMenuItem
-                key={kb.id}
+                key={connector.id}
                 className="items-start"
-                onSelect={() => selectKnowledgeBase(kb.id)}
+                onSelect={() => selectConnector(connector.id)}
               >
                 <Plug className="mt-0.5 size-4 text-muted-foreground" />
                 <span className="flex min-w-0 flex-col">
-                  <span className="truncate">{kb.name}</span>
+                  <span className="truncate">{connector.name}</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {kb.mcp_server}
+                    {connector.mcp_server}
                   </span>
                 </span>
-                {knowledgeBaseMode === kb.id && <Check className="ml-auto size-4" />}
+                {connectorMode === connector.id && <Check className="ml-auto size-4" />}
               </DropdownMenuItem>
             ))}
-            {knowledgeBases.length === 0 && (
+            {connectors.length === 0 && (
               <DropdownMenuItem disabled>
                 Немає доступних MCP-конекторів для ролі {userRole}
               </DropdownMenuItem>

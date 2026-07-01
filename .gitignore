@@ -36,6 +36,11 @@ yarn-error.log*
 !.env*.example
 !**/.env*.example
 
+# ContextForge connector runtime env (non-dotfile, e.g. connectors/bitrix.env,
+# notebooklm.env) — real creds/config; keep only the *.env.example templates.
+ops/contextforge/connectors/*.env
+!ops/contextforge/connectors/*.env.example
+
 # secrets / runtime data that must never be committed
 /secrets/
 **/volumes/

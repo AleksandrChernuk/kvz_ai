@@ -46,7 +46,7 @@ If the task touches Next.js route handlers, also read the relevant Next.js 16 do
    - Explicit egress allowlist for external calls.
 
 5. Integrate with kvz-ai:
-   - Register connector keys to match `knowledge_bases.mcp_server`.
+   - Register connector keys to match `connectors.mcp_server`.
    - Route access through role checks before invocation.
    - Preserve the queue/approval architecture; write-capable tools must not bypass the human approval gate.
 

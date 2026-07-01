@@ -9,8 +9,9 @@
       }
     },
     "notebooklm-selection": {
+      "_connector": "PleasePrompto/notebooklm-mcp — persistent Chrome profile (Patchright), no cookie-file scraping. One-time setup_auth login; subsequent runs headless. Read-only enforced by codex enabled_tools allowlist in handle_codex.sh (ask_question/list_notebooks/get_notebook/search_notebooks only).",
       "command": "npx",
-      "args": ["-y", "notebooklm-mcp-server@3.0.7", "server"],
+      "args": ["-y", "notebooklm-mcp@2.0.0"],
       "env": {
         "NOTEBOOKLM_CONNECTOR_CLASS": "read-only-kb",
         "NOTEBOOKLM_CONNECTOR_PURPOSE": "selection"

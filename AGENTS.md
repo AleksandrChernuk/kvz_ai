@@ -55,7 +55,7 @@ Worker endpoints require `Authorization: Bearer <WORKER_TOKEN>` (shared secret i
 | `GET  /api/tasks/[id]/stream` | user | SSE stream of task status (node server only) |
 | `GET/POST /api/runs` | admin / worker | Logical run batches |
 | `GET/POST/PATCH /api/mail` | worker (GET also admin) | Inter-agent mail |
-| `GET/POST /api/kb` | user+worker / admin | Knowledge bases (RLS filters by role) |
+| `GET/POST /api/connectors` | user+worker / admin | MCP connectors (RLS filters by role) |
 
 ### Token limit gate
 
@@ -105,9 +105,9 @@ codex-agent/               — Codex subagent (see codex-agent/CLAUDE.md)
 - **agent_mail** — typed inter-agent messages; `type`, `priority`, `read_at`
 - **agents** — agent catalog; `key: AgentType`, `name`, `description`, `enabled`
 - **role_agent_access** — role-to-agent access matrix
-- **knowledge_bases** — MCP connectors; `mcp_server` (key in `agent/.mcp.json`), `enabled`
-- **knowledge_base_role_access** — role-to-KB/service access matrix
-- **role_features** — UI feature flags per role (`training`, `kb_manage`, …)
+- **connectors** — MCP connectors; `mcp_server` (key in `agent/.mcp.json`), `enabled`
+- **connector_role_access** — role-to-connector access matrix
+- **role_features** — UI feature flags per role (`training`, `connectors_manage`, …)
 
 ### PostgreSQL functions (service role only)
 

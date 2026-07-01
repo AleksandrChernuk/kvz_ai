@@ -7,7 +7,7 @@ import { isUserRole } from "@/lib/validate"
 import type { Profile, RoleFeature } from "@/types/database"
 
 // GET /api/features — увімкнені фічі ролі поточного юзера.
-// UI використовує для показу/приховування розділів (training, kb_manage, …).
+// UI використовує для показу/приховування розділів (training, connectors_manage, …).
 export async function GET(req: Request) {
   const supabase = await createClient()
   const {

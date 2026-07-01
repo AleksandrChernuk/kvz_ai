@@ -7,13 +7,13 @@ protocol is in **`CLAUDE.md`** (read it first); this is the short orientation.
 
 ```
 scripts/poll.sh             queue loop: claim → token gate → enrich (role-scoped
-                            agents+KBs) → handler → deterministic filter →
+                            agents+connectors) → handler → deterministic filter →
                             approval gate → complete/fail. Watchdog every 10 iters.
 scripts/handle_task.sh      Claude plans/orchestrates; Codex executes read-only
                             with RAG grounding from kb-docs libraries.
 scripts/check_token_limit.py deterministic 5000-token gate (--trim drops oldest)
 scripts/validate_result.py  deterministic result filter (math/format, no AI)
-.mcp.json                   MCP connectors; keys = knowledge_bases.mcp_server
+.mcp.json                   MCP connectors; keys = connectors.mcp_server
 ```
 
 ## Invariants

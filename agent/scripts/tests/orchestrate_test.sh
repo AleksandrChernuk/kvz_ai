@@ -17,13 +17,13 @@ AGENTS='[{"key":"codex","name":"Codex","description":"код"}]'
 
 run() { # $1 = user_message
   jq -n --arg m "$1" --argjson a "$AGENTS" \
-    '{user_message:$m, user_role:"engineer", available_agents:$a, available_knowledge_bases:[]}' \
+    '{user_message:$m, user_role:"engineer", available_agents:$a, available_connectors:[]}' \
     | "$SCRIPTS_DIR/handle_task.sh"
 }
 
 run_agents() { # $1 = user_message, $2 = available_agents JSON
   jq -n --arg m "$1" --argjson a "$2" \
-    '{user_message:$m, user_role:"engineer", available_agents:$a, available_knowledge_bases:[]}' \
+    '{user_message:$m, user_role:"engineer", available_agents:$a, available_connectors:[]}' \
     | "$SCRIPTS_DIR/handle_task.sh"
 }
 
@@ -122,7 +122,7 @@ sub=$(echo "$out" | jq -c '.raw_result.sub_results')
 CH=$(mktemp)
 resumed=$(jq -n --arg m "порахуй вагу та запиши угоду в bitrix" --argjson a "$AGENTS" \
     --argjson plan "$plan" --argjson sub "$sub" \
-  '{user_message:$m, user_role:"engineer", available_agents:$a, available_knowledge_bases:[],
+  '{user_message:$m, user_role:"engineer", available_agents:$a, available_connectors:[],
     resume:{plan:$plan, sub_results:$sub}}' \
   | CODEX_HIT_FILE="$CH" "$SCRIPTS_DIR/handle_task.sh" 2>/dev/null)
 hits=$(wc -l < "$CH" | tr -d ' '); rm -f "$CH"

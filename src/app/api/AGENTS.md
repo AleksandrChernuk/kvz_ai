@@ -9,7 +9,7 @@ Two kinds of endpoints with **different auth**. Get this right or you create a h
 | **User** (browser session) | `supabase.auth.getUser()` → 401 if null; read role from `profiles` | `@/lib/supabase/server` (RLS-bound) |
 | **Worker** (orchestrator on VPS) | `verifyWorker(req)` — timing-safe `WORKER_TOKEN` | `@/lib/supabase/admin` (service role, bypasses RLS) |
 
-Some endpoints accept **either** (e.g. `kb` GET, `mail` GET, `watchdog`): try
+Some endpoints accept **either** (e.g. `connectors` GET, `mail` GET, `watchdog`): try
 `verifyWorker` first, else fall back to a session + `profiles.role === 'admin'` check.
 
 ## Hard rules
@@ -36,6 +36,6 @@ tasks/           GET (own/admin) · PATCH (admin cancel) · claim|complete|fail|
                  checkpoint|request-approval|watchdog (worker) · [taskId]/approve|reject
                  (user, owner/admin via security-definer RPC) · [taskId]/stream (SSE, node-only)
 runs/ mail/      worker/admin batch + inter-agent mail
-kb/ agents/      role-scoped access matrices (016) · features/ role_features
+connectors/ agents/ role-scoped access matrices (016/025) · features/ role_features
 ops/smoke/       service-role health probe
 ```

@@ -10,7 +10,7 @@ import { AGENT_CATALOG } from "@/lib/access"
 import { generateThreadTitle } from "@/lib/title"
 import type {
   AgentType,
-  KnowledgeBase,
+  Connector,
   Message,
   Profile,
   TaskPayload,
@@ -52,11 +52,11 @@ export async function POST(req: Request) {
   const content = typeof body?.content === "string" ? body.content.trim() : ""
   const threadId = typeof body?.thread_id === "string" ? body.thread_id : ""
   const preferredAgent = body?.preferred_agent
-  const preferredKnowledgeBaseId =
-    body?.preferred_knowledge_base_id === undefined
+  const preferredConnectorId =
+    body?.preferred_connector_id === undefined
       ? undefined
-      : typeof body.preferred_knowledge_base_id === "string"
-        ? body.preferred_knowledge_base_id.trim()
+      : typeof body.preferred_connector_id === "string"
+        ? body.preferred_connector_id.trim()
         : ""
 
   if (!content) {
@@ -68,8 +68,8 @@ export async function POST(req: Request) {
   if (preferredAgent !== undefined && !isRoutableChatAgent(preferredAgent)) {
     return NextResponse.json({ error: "agent невалідний" }, { status: 400 })
   }
-  if (preferredKnowledgeBaseId === "") {
-    return NextResponse.json({ error: "knowledge_base_id невалідний" }, { status: 400 })
+  if (preferredConnectorId === "") {
+    return NextResponse.json({ error: "connector_id невалідний" }, { status: 400 })
   }
   const selectedAgent: AgentType | undefined = preferredAgent
   const admin = createAdminClient()
@@ -101,43 +101,46 @@ export async function POST(req: Request) {
     }
   }
 
-  let selectedKnowledgeBase: TaskPayload["preferred_knowledge_base"] | undefined
+  let selectedConnector: TaskPayload["preferred_connector"] | undefined
 
-  if (preferredKnowledgeBaseId) {
-    const { data: kbAccess } = await admin
-      .from("knowledge_base_role_access")
-      .select("knowledge_base_id")
+  if (preferredConnectorId) {
+    const { data: connectorAccess } = await admin
+      .from("connector_role_access")
+      .select("connector_id")
       .eq("role", profile.role)
-      .eq("knowledge_base_id", preferredKnowledgeBaseId)
-      .maybeSingle<{ knowledge_base_id: string }>()
+      .eq("connector_id", preferredConnectorId)
+      .maybeSingle<{ connector_id: string }>()
 
-    if (!kbAccess) {
+    if (!connectorAccess) {
       return NextResponse.json(
         { error: "MCP-конектор недоступний для вашої ролі" },
         { status: 403 }
       )
     }
 
-    const { data: kb } = await admin
-      .from("knowledge_bases")
+    const { data: connector } = await admin
+      .from("connectors")
       .select("*")
-      .eq("id", preferredKnowledgeBaseId)
+      .eq("id", preferredConnectorId)
       .eq("enabled", true)
-      .maybeSingle<KnowledgeBase>()
+      .maybeSingle<Connector>()
 
-    if (!kb) {
+    if (!connector) {
       return NextResponse.json(
         { error: "MCP-конектор недоступний" },
         { status: 403 }
       )
     }
 
-    selectedKnowledgeBase = {
-      id: kb.id,
-      name: kb.name,
-      description: kb.description,
-      mcp_server: kb.mcp_server,
-      library: typeof kb.mcp_config.library === "string" ? kb.mcp_config.library : null,
+    selectedConnector = {
+      id: connector.id,
+      name: connector.name,
+      description: connector.description,
+      mcp_server: connector.mcp_server,
+      library:
+        typeof connector.mcp_config.library === "string"
+          ? connector.mcp_config.library
+          : null,
     }
   }
 
@@ -154,12 +157,12 @@ export async function POST(req: Request) {
     user_message: content,
     user_role: profile.role,
     preferred_agent: selectedAgent,
-    preferred_knowledge_base: selectedKnowledgeBase,
+    preferred_connector: selectedConnector,
     thread_context: (prior ?? []).reverse(),
     metadata: {
       timestamp: new Date().toISOString(),
       preferred_agent: selectedAgent ?? "auto",
-      preferred_knowledge_base_id: selectedKnowledgeBase?.id ?? "auto",
+      preferred_connector_id: selectedConnector?.id ?? "auto",
     },
   }
 

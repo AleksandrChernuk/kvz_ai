@@ -11,22 +11,27 @@ command -v codex >/dev/null || { echo "потрібен залогінений c
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KB_QUERY_JS="${KB_QUERY_JS:-$SCRIPT_DIR/../../connectors/kb-docs/dist/query-cli.js}"
-NOTEBOOKLM_MCP_PACKAGE="${NOTEBOOKLM_MCP_PACKAGE:-notebooklm-mcp-server@3.0.7}"
+NOTEBOOKLM_MCP_PACKAGE="${NOTEBOOKLM_MCP_PACKAGE:-notebooklm-mcp@2.0.0}"
+# Read-only NotebookLM tool surface (matches connector NOTEBOOKLM_DISABLED_TOOLS).
+NOTEBOOKLM_ALLOWED_TOOLS='["ask_question","list_notebooks","get_notebook","search_notebooks","get_library_stats"]'
 
 PAYLOAD=$(cat)
 USER_ROLE=$(echo "$PAYLOAD" | jq -r '.user_role // "viewer"')
 USER_MESSAGE=$(echo "$PAYLOAD" | jq -r '.user_message // ""')
-AVAILABLE_KBS=$(echo "$PAYLOAD" | jq -c '.available_knowledge_bases // []')
-PREFERRED_KB=$(echo "$PAYLOAD" | jq -c '.preferred_knowledge_base // empty')
-PREFERRED_KB_ID=$(echo "$PAYLOAD" | jq -r '.preferred_knowledge_base.id // empty')
+AVAILABLE_CONNECTORS=$(echo "$PAYLOAD" | jq -c '.available_connectors // .available_knowledge_bases // []')
+PREFERRED_CONNECTOR=$(echo "$PAYLOAD" | jq -c '.preferred_connector // .preferred_knowledge_base // empty')
+PREFERRED_CONNECTOR_ID=$(echo "$PAYLOAD" | jq -r '.preferred_connector.id // .preferred_knowledge_base.id // empty')
+# Role→notebook binding: a NotebookLM KB row may pin one notebook (id or url).
+PREFERRED_NOTEBOOK_ID=$(echo "$PAYLOAD" | jq -r '.preferred_connector.notebook_id // .preferred_knowledge_base.notebook_id // empty')
+PREFERRED_NOTEBOOK_URL=$(echo "$PAYLOAD" | jq -r '.preferred_connector.notebook_url // .preferred_knowledge_base.notebook_url // empty')
 [ -n "$USER_MESSAGE" ] || { echo "порожнє повідомлення" >&2; exit 1; }
 
-if [ -n "$PREFERRED_KB_ID" ]; then
-  AVAILABLE_KBS=$(echo "$AVAILABLE_KBS" | jq -c --arg id "$PREFERRED_KB_ID" '[.[] | select(.id == $id)]')
+if [ -n "$PREFERRED_CONNECTOR_ID" ]; then
+  AVAILABLE_CONNECTORS=$(echo "$AVAILABLE_CONNECTORS" | jq -c --arg id "$PREFERRED_CONNECTOR_ID" '[.[] | select(.id == $id)]')
 fi
 
 # --- RAG retrieval (role-scoped libraries) ----------------------------------
-KB_LIBS=$(echo "$AVAILABLE_KBS" | jq -r '.[] | select(.mcp_server == "kb-docs") | .library | select(. != null and . != "")' | sort -u)
+KB_LIBS=$(echo "$AVAILABLE_CONNECTORS" | jq -r '.[] | select(.mcp_server == "kb-docs") | .library | select(. != null and . != "")' | sort -u)
 HITS='[]'
 if [ -n "$KB_LIBS" ] && [ -n "$USER_MESSAGE" ] && [ -f "$KB_QUERY_JS" ] && command -v node >/dev/null; then
   while IFS= read -r lib; do
@@ -48,21 +53,30 @@ INSTR="Ти — read-only помічник внутрішньої системи
 Роль користувача: $USER_ROLE. Нічого не запускай, не змінюй у системі, не записуй у \
 Bitrix24/1С і не обіцяй зовнішні дії. Для ролі viewer — тільки довідка. \
 MCP-інструменти з мутаціями або створенням/видаленням notebooks/sources не використовуй; \
-для NotebookLM дозволені тільки читання, список notebooks і запити до наявних джерел."
+для NotebookLM дозволені тільки читання: \`ask_question\`, \`list_notebooks\`, \
+\`get_notebook\`, \`search_notebooks\`, \`get_library_stats\`."
 
-if [ -n "$PREFERRED_KB" ]; then
-  PREFERRED_KB_TEXT=$(echo "$PREFERRED_KB" | jq -r '"Обраний MCP-конектор: \(.name) (\(.mcp_server))" + (if .library then ", бібліотека: \(.library)" else "" end) + "."')
+if [ -n "$PREFERRED_CONNECTOR" ]; then
+  PREFERRED_CONNECTOR_TEXT=$(echo "$PREFERRED_CONNECTOR" | jq -r '"Обраний MCP-конектор: \(.name) (\(.mcp_server))" + (if .library then ", бібліотека: \(.library)" else "" end) + "."')
   INSTR="$INSTR
 
-$PREFERRED_KB_TEXT Використовуй саме це джерело як пріоритетне. Якщо в доступному контексті \
+$PREFERRED_CONNECTOR_TEXT Використовуй саме це джерело як пріоритетне. Якщо в доступному контексті \
 немає відповіді з цього джерела — чесно скажи, що потрібен запит до обраного MCP."
 
-  if [ "$(echo "$PREFERRED_KB" | jq -r '.mcp_server // empty')" = "notebooklm-selection" ]; then
-    INSTR="$INSTR
+  if [ "$(echo "$PREFERRED_CONNECTOR" | jq -r '.mcp_server // empty')" = "notebooklm-selection" ]; then
+    if [ -n "$PREFERRED_NOTEBOOK_ID" ] || [ -n "$PREFERRED_NOTEBOOK_URL" ]; then
+      NB_TARGET=$([ -n "$PREFERRED_NOTEBOOK_ID" ] && echo "notebook_id=$PREFERRED_NOTEBOOK_ID" || echo "notebook_url=$PREFERRED_NOTEBOOK_URL")
+      INSTR="$INSTR
 
-Для NotebookLM MCP спочатку знайди релевантний notebook, потім став питання через \
-читальний інструмент \`notebook_query\`. Не створюй, не перейменовуй, не видаляй notebooks \
-і не додавай/не видаляй sources."
+Для NotebookLM став питання через \`ask_question\` саме до цього notebook: $NB_TARGET. \
+Не звертайся до інших notebooks. Не створюй, не перейменовуй, не видаляй notebooks і sources."
+    else
+      INSTR="$INSTR
+
+Для NotebookLM спочатку знайди релевантний notebook (\`list_notebooks\`/\`search_notebooks\`), \
+потім став питання через \`ask_question\` з його notebook_id. Не створюй, не перейменовуй, \
+не видаляй notebooks і sources."
+    fi
   fi
 fi
 
@@ -75,7 +89,7 @@ if [ "$GROUNDED" = "true" ]; then
 [бібліотека/документ]. Якщо відповіді в них немає — чесно скажи, не вигадуй:
 $CONTEXT"
 else
-  KB_NAMES=$(echo "$AVAILABLE_KBS" | jq -r '[.[] | .name] | join(", ")')
+  KB_NAMES=$(echo "$AVAILABLE_CONNECTORS" | jq -r '[.[] | .name] | join(", ")')
   if [ -n "$KB_NAMES" ]; then
     INSTR="$INSTR
 
@@ -97,12 +111,17 @@ OUT=$(mktemp); trap 'rm -f "$OUT"' EXIT
 MODEL_ARG=()
 [ -n "${CODEX_MODEL:-}" ] && MODEL_ARG=(-m "$CODEX_MODEL")
 MCP_ARG=()
-if [ "$PREFERRED_KB_ID" = "notebooklm-selection" ] \
-  || [ "$(echo "${PREFERRED_KB:-{}}" | jq -r '.mcp_server // empty' 2>/dev/null || true)" = "notebooklm-selection" ]; then
+if [ "$(echo "${PREFERRED_CONNECTOR:-{}}" | jq -r '.mcp_server // empty' 2>/dev/null || true)" = "notebooklm-selection" ]; then
+  # notebooklm-mcp@2 defaults to the stdio MCP server (no subcommand). Read-only
+  # is enforced two ways: codex enabled_tools allowlist, and the connector's own
+  # NOTEBOOKLM_DISABLED_TOOLS/PROFILE env (defense in depth for local spawns).
   MCP_ARG=(
     -c 'mcp_servers.notebooklm-selection.command="npx"'
-    -c "mcp_servers.notebooklm-selection.args=[\"-y\",\"$NOTEBOOKLM_MCP_PACKAGE\",\"server\"]"
-    -c 'mcp_servers.notebooklm-selection.startup_timeout_sec=120'
+    -c "mcp_servers.notebooklm-selection.args=[\"-y\",\"$NOTEBOOKLM_MCP_PACKAGE\"]"
+    -c "mcp_servers.notebooklm-selection.enabled_tools=$NOTEBOOKLM_ALLOWED_TOOLS"
+    -c 'mcp_servers.notebooklm-selection.env.NOTEBOOKLM_PROFILE="minimal"'
+    -c 'mcp_servers.notebooklm-selection.env.NOTEBOOKLM_DISABLED_TOOLS="add_source,add_notebook,update_notebook,remove_notebook,generate_audio,download_audio,cleanup_data,setup_auth,re_auth,select_notebook,close_session,reset_session"'
+    -c 'mcp_servers.notebooklm-selection.startup_timeout_sec=180'
   )
 fi
 

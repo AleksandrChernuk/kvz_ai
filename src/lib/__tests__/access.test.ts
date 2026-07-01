@@ -13,12 +13,12 @@ describe("access catalog", () => {
   it("keeps agents separate from UI feature flags", () => {
     expect(FEATURE_CATALOG.map((feature) => feature.key)).toEqual([
       "training",
-      "kb_manage",
+      "connectors_manage",
       "export",
     ])
-    expect(AGENT_CATALOG.map((agent) => agent.key)).toContain("kb")
-    expect(isManagedFeature("agent:kb")).toBe(false)
-    expect(isManagedAgent("kb")).toBe(true)
+    expect(AGENT_CATALOG.map((agent) => agent.key)).toContain("connector")
+    expect(isManagedFeature("agent:connector")).toBe(false)
+    expect(isManagedAgent("connector")).toBe(true)
   })
 
   it("accepts orchestrated as a result-only agent without exposing it to access UI", () => {

@@ -1,0 +1,6 @@
+# Runtime auth state — the persistent Chrome profile is live session state and
+# must never be committed (cookies/fingerprint of the connector's Google account).
+data/
+chrome_profile/
+.env
+*.log

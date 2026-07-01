@@ -7,7 +7,7 @@ import { verifyWorker } from "@/lib/worker-auth"
 type SmokeCheck = {
   agents_count: number
   role_agent_access_count: number
-  knowledge_base_role_access_count: number
+  connector_role_access_count: number
   can_role_access_codex_viewer: boolean
   release_stale_locks_available: boolean
 }
